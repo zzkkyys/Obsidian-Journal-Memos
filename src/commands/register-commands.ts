@@ -16,7 +16,7 @@ async function appendSelection(plugin: JournalMemosPlugin, editor: Editor): Prom
 export function registerCommands(plugin: JournalMemosPlugin): void {
 	plugin.addCommand({
 		id: "open-journal-memos-view",
-		name: "Open Journal Memos",
+		name: "Open memos view",
 		callback: () => {
 			void plugin.activateView();
 		},
@@ -24,7 +24,7 @@ export function registerCommands(plugin: JournalMemosPlugin): void {
 
 	plugin.addCommand({
 		id: "append-selection-as-journal-memo",
-		name: "Append selection as journal memo",
+		name: "Append selection as memo",
 		editorCallback: (editor) => {
 			void appendSelection(plugin, editor);
 		},

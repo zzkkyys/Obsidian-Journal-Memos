@@ -3,14 +3,18 @@ import type JournalMemosPlugin from "./main";
 
 export interface JournalMemosSettings {
 	dailyNotesFolder: string;
+	attachmentsFolder: string;
 	streamDays: number;
 	heatmapDays: number;
+	memoImageMaxWidth: number;
 }
 
 export const DEFAULT_SETTINGS: JournalMemosSettings = {
 	dailyNotesFolder: "Daily",
+	attachmentsFolder: "",
 	streamDays: 30,
 	heatmapDays: 140,
+	memoImageMaxWidth: 640,
 };
 
 function parsePositiveInt(value: string, fallback: number): number {
@@ -35,7 +39,7 @@ export class JournalMemosSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Daily notes folder")
-			.setDesc("Folder containing your YYYY-MM-DD.md daily notes.")
+			.setDesc("Folder containing daily notes named yyyy-mm-dd.md.")
 			.addText((text) =>
 				text
 					.setPlaceholder("Daily")
@@ -45,6 +49,19 @@ export class JournalMemosSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 						this.plugin.memoService.clearCache();
 						await this.plugin.refreshOpenViews();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Attachments folder")
+			.setDesc("Where pasted or uploaded memo attachments are stored. Leave empty to use <daily folder>/_attachments.")
+			.addText((text) =>
+				text
+					.setPlaceholder("Daily/_attachments")
+					.setValue(this.plugin.settings.attachmentsFolder)
+					.onChange(async (value) => {
+						this.plugin.settings.attachmentsFolder = value.trim();
+						await this.plugin.saveSettings();
 					}),
 			);
 
@@ -71,6 +88,20 @@ export class JournalMemosSettingTab extends PluginSettingTab {
 					.setValue(String(this.plugin.settings.heatmapDays))
 					.onChange(async (value) => {
 						this.plugin.settings.heatmapDays = parsePositiveInt(value, DEFAULT_SETTINGS.heatmapDays);
+						await this.plugin.saveSettings();
+						await this.plugin.refreshOpenViews();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Memo image max width (px)")
+			.setDesc("Maximum width for memo images in stream cards and inline memo render.")
+			.addText((text) =>
+				text
+					.setPlaceholder("640")
+					.setValue(String(this.plugin.settings.memoImageMaxWidth))
+					.onChange(async (value) => {
+						this.plugin.settings.memoImageMaxWidth = parsePositiveInt(value, DEFAULT_SETTINGS.memoImageMaxWidth);
 						await this.plugin.saveSettings();
 						await this.plugin.refreshOpenViews();
 					}),

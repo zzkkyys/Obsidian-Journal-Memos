@@ -5,6 +5,20 @@ export interface MemoItem {
 	createdAt: number;
 	createdLabel: string;
 	content: string;
+	tags: string[];
+	attachments: MemoAttachment[];
+}
+
+export interface MemoAttachmentInput {
+	name: string;
+	mimeType: string;
+	data: ArrayBuffer;
+}
+
+export interface MemoAttachment {
+	path: string;
+	name: string;
+	isImage: boolean;
 }
 
 export interface HeatmapCell {

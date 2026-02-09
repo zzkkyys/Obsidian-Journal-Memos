@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, MarkdownRenderer, WorkspaceLeaf } from "obsidian";
 import type JournalMemosPlugin from "../main";
 import type { MemoSnapshot } from "../types";
 import JournalMemosApp from "./JournalMemosApp.svelte";
@@ -19,7 +19,7 @@ export class JournalMemosView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return "Journal Memos";
+		return "Journal memos";
 	}
 
 	getIcon(): string {
@@ -49,19 +49,38 @@ export class JournalMemosView extends ItemView {
 		this.component.$set({
 			stream: snapshot.stream,
 			heatmap: snapshot.heatmap,
+			memoImageMaxWidth: this.plugin.settings.memoImageMaxWidth,
 		});
+	}
+
+	private async renderMemoContent(el: HTMLElement, markdown: string, sourcePath: string): Promise<void> {
+		el.replaceChildren();
+		if (!markdown.trim()) {
+			return;
+		}
+		await MarkdownRenderer.render(this.app, markdown, el, sourcePath, this);
 	}
 
 	private createProps(snapshot: MemoSnapshot) {
 		return {
 			stream: snapshot.stream,
 			heatmap: snapshot.heatmap,
+			memoImageMaxWidth: this.plugin.settings.memoImageMaxWidth,
 			refreshData: () => this.plugin.memoService.getSnapshot(),
 			publishMemo: async (content: string) => {
 				await this.plugin.memoService.appendMemo(content);
-				await this.refresh();
 			},
+			updateMemo: async (memo: { id: string; filePath: string; createdLabel: string; content: string; attachments: Array<{ path: string; name: string; isImage: boolean }> }, content: string) => {
+				await this.plugin.memoService.updateMemo(memo, content);
+			},
+			saveAttachments: async (
+				attachments: Array<{ name: string; mimeType: string; data: ArrayBuffer }>,
+			) => this.plugin.memoService.saveAttachments(attachments),
 			openDaily: (dateKey: string) => this.plugin.memoService.openDailyNote(dateKey),
+			openOrCreateDaily: (dateKey: string) => this.plugin.memoService.openOrCreateDailyNote(dateKey),
+			openPluginSettings: () => this.plugin.openPluginSettings(),
+			renderMemoContent: (el: HTMLElement, markdown: string, sourcePath: string) =>
+				this.renderMemoContent(el, markdown, sourcePath),
 		};
 	}
 }
