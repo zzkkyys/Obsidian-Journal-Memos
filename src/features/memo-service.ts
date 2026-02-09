@@ -35,13 +35,19 @@ interface ParseCacheEntry {
 	memos: MemoItem[];
 }
 
+import { AttachmentManager } from "./attachment-manager";
+
 export class MemoService {
 	private readonly parseCache = new Map<string, ParseCacheEntry>();
+	private readonly attachmentManager: AttachmentManager;
 
 	constructor(
 		private readonly app: App,
 		private readonly readSettings: () => JournalMemosSettings,
-	) {}
+		pluginDir: string
+	) {
+		this.attachmentManager = new AttachmentManager(app, pluginDir);
+	}
 
 	isTrackedPath(path: string): boolean {
 		return isDailyNotePath(path, this.readSettings().dailyNotesFolder);
@@ -49,6 +55,12 @@ export class MemoService {
 
 	invalidate(path: string): void {
 		this.parseCache.delete(path);
+	}
+
+	async rebuildAttachmentIndex(): Promise<void> {
+		// Only scan the resolved attachment folder for hash indexing
+		const attachmentIndexFolder = this.resolveAttachmentRootFolder();
+		await this.attachmentManager.rebuildIndex(attachmentIndexFolder);
 	}
 
 	clearCache(): void {
@@ -60,7 +72,7 @@ export class MemoService {
 		const now = new Date();
 		const dateKey = formatDateKey(now);
 
-		const file = await ensureDailyNoteFile(this.app, settings.dailyNotesFolder, dateKey);
+		const file = await ensureDailyNoteFile(this.app, settings.dailyNotesFolder, dateKey, settings.dailyNotePathFormat);
 		await appendMemoBlock(this.app, file, content, now);
 		this.invalidate(file.path);
 		return file;
@@ -79,7 +91,24 @@ export class MemoService {
 		this.invalidate(abstractFile.path);
 	}
 
-	async saveAttachments(attachments: MemoAttachmentInput[]): Promise<MemoAttachment[]> {
+	// Check if a file with the given name already exists in the target folder
+	checkDuplicateAttachment(name: string): { exists: boolean; existingPath: string | null } {
+		const dateKey = formatDateKey(new Date());
+		const targetFolder = normalizePath(`${this.resolveAttachmentRootFolder()}/${dateKey}`);
+		const fileName = this.normalizeAttachmentFileName(name, "");
+		const directPath = normalizePath(`${targetFolder}/${fileName}`);
+		const existing = this.app.vault.getAbstractFileByPath(directPath);
+
+		return {
+			exists: existing instanceof TFile,
+			existingPath: existing instanceof TFile ? directPath : null,
+		};
+	}
+
+	async saveAttachments(
+		attachments: MemoAttachmentInput[],
+		duplicateHandler?: (name: string, existingPath: string, matchType: "name_conflict" | "content_match") => Promise<"use_existing" | "create_new" | "skip">
+	): Promise<MemoAttachment[]> {
 		if (attachments.length === 0) {
 			return [];
 		}
@@ -90,8 +119,59 @@ export class MemoService {
 
 		const saved: MemoAttachment[] = [];
 		for (const attachment of attachments) {
+			// Check for content duplicate using hash
+			const buffer = attachment.data;
+			const contentDuplicatePath = await this.attachmentManager.getDuplicatePath(buffer);
+
+			if (contentDuplicatePath && duplicateHandler) {
+				const fileName = this.getFileName(contentDuplicatePath);
+				const action = await duplicateHandler(attachment.name, contentDuplicatePath, "content_match");
+
+				if (action === "use_existing") {
+					const isImage = this.isImageAttachment(contentDuplicatePath, attachment.mimeType);
+					saved.push({
+						path: contentDuplicatePath,
+						name: fileName,
+						isImage,
+					});
+					continue;
+				} else if (action === "skip") {
+					continue;
+				}
+				// action === "create_new" -> proceed to create new file
+			}
+
+			const fileName = this.normalizeAttachmentFileName(attachment.name, attachment.mimeType);
+			const directPath = normalizePath(`${targetFolder}/${fileName}`);
+			const existing = this.app.vault.getAbstractFileByPath(directPath);
+
+			if (existing instanceof TFile && duplicateHandler) {
+				// File exists (name conflict), ask user what to do
+				const action = await duplicateHandler(attachment.name, directPath, "name_conflict");
+
+				if (action === "use_existing") {
+					// Use the existing file
+					const isImage = this.isImageAttachment(directPath, attachment.mimeType);
+					saved.push({
+						path: directPath,
+						name: this.getFileName(directPath),
+						isImage,
+					});
+					continue;
+				} else if (action === "skip") {
+					// Skip this attachment
+					continue;
+				}
+				// action === "create_new", fall through to create with unique path
+			}
+
+			// Create the file (with unique path if needed)
 			const path = await this.buildUniqueAttachmentPath(targetFolder, attachment.name, attachment.mimeType);
 			await this.app.vault.createBinary(path, attachment.data);
+
+			// Index the new file
+			await this.attachmentManager.addFile(path, attachment.data);
+
 			const isImage = this.isImageAttachment(path, attachment.mimeType);
 			saved.push({
 				path,
@@ -115,7 +195,7 @@ export class MemoService {
 
 	async openDailyNote(dateKey: string): Promise<void> {
 		const settings = this.readSettings();
-		const file = getDailyFileByDate(this.app, settings.dailyNotesFolder, dateKey);
+		const file = getDailyFileByDate(this.app, settings.dailyNotesFolder, dateKey, settings.dailyNotePathFormat);
 		if (!file) {
 			new Notice(`No daily note for ${dateKey}`);
 			return;
@@ -126,7 +206,7 @@ export class MemoService {
 
 	async openOrCreateDailyNote(dateKey: string): Promise<void> {
 		const settings = this.readSettings();
-		const file = await ensureDailyNoteFile(this.app, settings.dailyNotesFolder, dateKey);
+		const file = await ensureDailyNoteFile(this.app, settings.dailyNotesFolder, dateKey, settings.dailyNotePathFormat);
 		await this.app.workspace.getLeaf(true).openFile(file);
 	}
 
@@ -135,14 +215,46 @@ export class MemoService {
 		const indexedPaths = getIndexedDailyPaths(this.app, settings.dailyNotesFolder);
 		const files = indexedPaths
 			.map((path) => this.app.vault.getAbstractFileByPath(path))
-			.filter((file): file is TFile => file instanceof TFile);
+			.filter((file): file is TFile => file instanceof TFile)
+			.sort((a, b) => b.stat.mtime - a.stat.mtime);
 
-		await Promise.all(files.map((file) => this.readMemos(file)));
+		// Load recent files immediately
+		const INITIAL_BATCH_SIZE = 30;
+		const initialBatch = files.slice(0, INITIAL_BATCH_SIZE);
+		await Promise.all(initialBatch.map((file) => this.readMemos(file)));
+
+		// Load the rest in background chunks
+		const remaining = files.slice(INITIAL_BATCH_SIZE);
+		if (remaining.length === 0) {
+			return;
+		}
+
+		console.log(`[Journal Memos] Background loading ${remaining.length} files...`);
+		const CHUNK_SIZE = 50;
+		let index = 0;
+
+		const processNextChunk = async () => {
+			if (index >= remaining.length) {
+				console.log("[Journal Memos] Background loading complete.");
+				return;
+			}
+
+			const chunk = remaining.slice(index, index + CHUNK_SIZE);
+			index += CHUNK_SIZE;
+
+			await Promise.all(chunk.map((file) => this.readMemos(file)));
+
+			// Schedule next chunk with a delay to yield to main thread
+			setTimeout(() => void processNextChunk(), 200);
+		};
+
+		// Start background loading after a short delay
+		setTimeout(() => void processNextChunk(), 1000);
 	}
 
 	private async getStream(days: number): Promise<MemoItem[]> {
 		const settings = this.readSettings();
-		const files = getRecentDailyFiles(this.app, settings.dailyNotesFolder, days);
+		const files = getRecentDailyFiles(this.app, settings.dailyNotesFolder, days, settings.dailyNotePathFormat);
 		const allMemos = await Promise.all(files.map((file) => this.readMemos(file)));
 		return allMemos.flat().sort((left, right) => right.createdAt - left.createdAt);
 	}
@@ -150,7 +262,7 @@ export class MemoService {
 	private async getHeatmap(days: number): Promise<HeatmapCell[]> {
 		const settings = this.readSettings();
 		const dateKeys = getRecentDateKeys(days).reverse();
-		const recentFiles = getRecentDailyFiles(this.app, settings.dailyNotesFolder, days);
+		const recentFiles = getRecentDailyFiles(this.app, settings.dailyNotesFolder, days, settings.dailyNotePathFormat);
 		const fileMap = new Map<string, TFile>(recentFiles.map((file) => [file.basename, file]));
 
 		const cells = await Promise.all(
@@ -193,17 +305,16 @@ export class MemoService {
 
 	private resolveAttachmentRootFolder(): string {
 		const settings = this.readSettings();
-		const customFolder = settings.attachmentsFolder.trim();
-		if (customFolder) {
-			return normalizePath(customFolder).replace(/^\/+|\/+$/g, "");
+		let folder = settings.attachmentsFolder.trim();
+
+		if (!folder) {
+			folder = "{folder}/_attachments";
 		}
 
 		const dailyFolder = settings.dailyNotesFolder.trim();
-		if (dailyFolder) {
-			return normalizePath(`${dailyFolder}/_attachments`).replace(/^\/+|\/+$/g, "");
-		}
+		folder = folder.replace(/{folder}/g, dailyFolder);
 
-		return "_attachments";
+		return normalizePath(folder).replace(/^\/+|\/+$/g, "");
 	}
 
 	private async ensureFolderPath(folderPath: string): Promise<void> {

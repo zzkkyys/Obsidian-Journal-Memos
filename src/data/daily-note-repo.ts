@@ -16,13 +16,34 @@ function normalizeDailyFolder(folder: string): string {
 	return normalizePath(trimmed).replace(/^\/+|\/+$/g, "");
 }
 
-export function buildDailyNotePath(folder: string, dateKey: string): string {
+export function buildDailyNotePath(folder: string, dateKey: string, format?: string): string {
 	const normalizedFolder = normalizeDailyFolder(folder);
-	return normalizePath(normalizedFolder ? `${normalizedFolder}/${dateKey}.md` : `${dateKey}.md`);
+
+	// If no format specified, use the legacy format
+	if (!format) {
+		return normalizePath(normalizedFolder ? `${normalizedFolder}/${dateKey}.md` : `${dateKey}.md`);
+	}
+
+	// Parse dateKey (expected format: yyyy-MM-dd)
+	const [yyyy, MM, dd] = dateKey.split("-");
+
+	// Replace placeholders in format string
+	let path = format
+		.replace(/\{folder\}/g, normalizedFolder)
+		.replace(/\{yyyy\}/g, yyyy || "")
+		.replace(/\{MM\}/g, MM || "")
+		.replace(/\{dd\}/g, dd || "")
+		.replace(/\{yyyy-MM-dd\}/g, dateKey)
+		.replace(/\{yyyy-MM\}/g, `${yyyy}-${MM}`);
+
+	// Clean up double slashes and normalize
+	path = path.replace(/\/+/g, "/").replace(/^\/+/, "");
+
+	return normalizePath(path);
 }
 
-export function getDailyFileByDate(app: App, folder: string, dateKey: string): TFile | null {
-	const abstractFile = app.vault.getAbstractFileByPath(buildDailyNotePath(folder, dateKey));
+export function getDailyFileByDate(app: App, folder: string, dateKey: string, format?: string): TFile | null {
+	const abstractFile = app.vault.getAbstractFileByPath(buildDailyNotePath(folder, dateKey, format));
 	return abstractFile instanceof TFile ? abstractFile : null;
 }
 
@@ -37,9 +58,9 @@ export function isDailyNotePath(path: string, folder: string): boolean {
 	return DAILY_NOTE_NAME_REGEX.test(fileName);
 }
 
-export function getRecentDailyFiles(app: App, folder: string, days: number): TFile[] {
+export function getRecentDailyFiles(app: App, folder: string, days: number, format?: string): TFile[] {
 	return getRecentDateKeys(days)
-		.map((dateKey) => getDailyFileByDate(app, folder, dateKey))
+		.map((dateKey) => getDailyFileByDate(app, folder, dateKey, format))
 		.filter((file): file is TFile => file !== null);
 }
 
@@ -65,16 +86,19 @@ export async function ensureDailyNoteFile(
 	app: App,
 	folder: string,
 	dateKey = formatDateKey(new Date()),
+	format?: string,
 ): Promise<TFile> {
-	const path = buildDailyNotePath(folder, dateKey);
+	const path = buildDailyNotePath(folder, dateKey, format);
 	const existing = app.vault.getAbstractFileByPath(path);
 	if (existing instanceof TFile) {
 		return existing;
 	}
 
-	const normalizedFolder = normalizeDailyFolder(folder);
-	if (normalizedFolder) {
-		await ensureFolder(app, normalizedFolder);
+	// Extract the folder part from the path and ensure it exists
+	const lastSlash = path.lastIndexOf("/");
+	if (lastSlash > 0) {
+		const folderPath = path.slice(0, lastSlash);
+		await ensureFolder(app, folderPath);
 	}
 
 	return app.vault.create(path, "");
@@ -116,9 +140,46 @@ export async function appendMemoBlock(
 		"",
 	].join("\n");
 
+	const MEMOS_HEADING = "## memos";
+	const MEMOS_HEADING_REGEX = /^## memos\s*$/im;
+
 	await app.vault.process(file, (existingText) => {
-		const separator = existingText.length > 0 && !existingText.endsWith("\n") ? "\n" : "";
-		return `${existingText}${separator}${block}`;
+		const normalized = existingText.replace(/\r\n/g, "\n");
+
+		// Check if ## memos section exists
+		const headingMatch = MEMOS_HEADING_REGEX.exec(normalized);
+
+		if (headingMatch) {
+			// Find the position after the heading line
+			const headingEndIndex = headingMatch.index + headingMatch[0].length;
+
+			// Find the next heading (## or #) to know where to insert
+			const afterHeading = normalized.slice(headingEndIndex);
+			const nextHeadingMatch = /\n(#{1,2}\s+[^\n]+)/m.exec(afterHeading);
+
+			let insertPosition: number;
+			if (nextHeadingMatch) {
+				// Insert before the next heading
+				insertPosition = headingEndIndex + nextHeadingMatch.index;
+			} else {
+				// No next heading, append to end
+				insertPosition = normalized.length;
+			}
+
+			// Ensure proper spacing
+			const beforeInsert = normalized.slice(0, insertPosition);
+			const afterInsert = normalized.slice(insertPosition);
+
+			const separator = beforeInsert.endsWith("\n\n") ? "" :
+				beforeInsert.endsWith("\n") ? "\n" : "\n\n";
+
+			return `${beforeInsert}${separator}${block}${afterInsert}`;
+		} else {
+			// No ## memos section exists, create it at the end
+			const separator = normalized.length > 0 && !normalized.endsWith("\n") ? "\n\n" :
+				normalized.length > 0 && !normalized.endsWith("\n\n") ? "\n" : "";
+			return `${normalized}${separator}${MEMOS_HEADING}\n\n${block}`;
+		}
 	});
 }
 

@@ -1,6 +1,7 @@
-import { ItemView, MarkdownRenderer, WorkspaceLeaf } from "obsidian";
+import { ItemView, MarkdownRenderer, Notice, WorkspaceLeaf } from "obsidian";
 import type JournalMemosPlugin from "../main";
 import type { MemoSnapshot } from "../types";
+import { DuplicateFileModal } from "./DuplicateFileModal";
 import JournalMemosApp from "./JournalMemosApp.svelte";
 
 export const JOURNAL_MEMOS_VIEW_TYPE = "journal-memos-view";
@@ -50,6 +51,7 @@ export class JournalMemosView extends ItemView {
 			stream: snapshot.stream,
 			heatmap: snapshot.heatmap,
 			memoImageMaxWidth: this.plugin.settings.memoImageMaxWidth,
+			exploreColumnLimit: this.plugin.settings.exploreColumnLimit,
 		});
 	}
 
@@ -66,6 +68,7 @@ export class JournalMemosView extends ItemView {
 			stream: snapshot.stream,
 			heatmap: snapshot.heatmap,
 			memoImageMaxWidth: this.plugin.settings.memoImageMaxWidth,
+			exploreColumnLimit: this.plugin.settings.exploreColumnLimit,
 			refreshData: () => this.plugin.memoService.getSnapshot(),
 			publishMemo: async (content: string) => {
 				await this.plugin.memoService.appendMemo(content);
@@ -75,12 +78,22 @@ export class JournalMemosView extends ItemView {
 			},
 			saveAttachments: async (
 				attachments: Array<{ name: string; mimeType: string; data: ArrayBuffer }>,
-			) => this.plugin.memoService.saveAttachments(attachments),
+			) => this.plugin.memoService.saveAttachments(attachments, async (name, existingPath, matchType) => {
+				// Show confirmation dialog for duplicate files
+				return new Promise<"use_existing" | "create_new" | "skip">((resolve) => {
+					const modal = new DuplicateFileModal(this.app, name, existingPath, matchType, (action) => {
+						resolve(action);
+					});
+					modal.open();
+				});
+			}),
 			openDaily: (dateKey: string) => this.plugin.memoService.openDailyNote(dateKey),
 			openOrCreateDaily: (dateKey: string) => this.plugin.memoService.openOrCreateDailyNote(dateKey),
 			openPluginSettings: () => this.plugin.openPluginSettings(),
 			renderMemoContent: (el: HTMLElement, markdown: string, sourcePath: string) =>
 				this.renderMemoContent(el, markdown, sourcePath),
+			notice: (message: string, timeout?: number) => new Notice(message, timeout),
+			resolveResourcePath: (path: string) => this.app.vault.adapter.getResourcePath(path),
 		};
 	}
 }

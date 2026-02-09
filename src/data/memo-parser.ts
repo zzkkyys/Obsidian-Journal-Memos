@@ -2,8 +2,8 @@ import { TFile } from "obsidian";
 import type { MemoAttachment, MemoItem } from "../types";
 import { parseCreatedAt } from "../utils/date";
 
-const MEMO_BLOCK_REGEX = /^```memos[^\S\r\n]*\r?\n([\s\S]*?)\r?\n```[^\S\r\n]*(?=\r?\n|$)/gm;
-const CREATED_LINE_REGEX = /^created:\s*(.+)$/m;
+const MEMO_BLOCK_REGEX = /^[ \t]*```memos[^\S\r\n]*\r?\n([\s\S]*?)\r?\n[ \t]*```[^\S\r\n]*(?=\r?\n|$)/gm;
+const CREATED_LINE_REGEX = /^\s*created:\s*(.+)$/m;
 const TAG_REGEX = /(^|[\s(])#([^\s#.,!?()[\]{}"']+)/g;
 const TAGS_LINE_REGEX = /^\s*tags:\s*(.*)$/i;
 const ATTACHMENT_BLOCK_REGEX = /<!--\s*jm-attachments:start\s*-->\s*([\s\S]*?)\s*<!--\s*jm-attachments:end\s*-->/i;
@@ -100,7 +100,39 @@ function parseAttachmentPath(raw: string): string | null {
 	return trimmed;
 }
 
-function extractAttachmentBlock(raw: string): { content: string; attachments: MemoAttachment[] } {
+// Extract wiki-links from content as attachments
+// Matches both embedded ![[path]] and regular [[path]] links
+const WIKI_LINK_REGEX = /!?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
+
+function extractWikiLinkAttachments(content: string): MemoAttachment[] {
+	const attachmentSet = new Set<string>();
+	const attachments: MemoAttachment[] = [];
+
+	WIKI_LINK_REGEX.lastIndex = 0;
+	let match: RegExpExecArray | null;
+
+	while ((match = WIKI_LINK_REGEX.exec(content)) !== null) {
+		const path = match[1]?.trim();
+		if (!path || attachmentSet.has(path)) {
+			continue;
+		}
+
+		// Only treat as attachment if it looks like an image/file
+		if (looksLikeImageAttachment(path)) {
+			attachmentSet.add(path);
+			attachments.push({
+				path,
+				name: fileNameFromPath(path),
+				isImage: true,
+			});
+		}
+	}
+
+	return attachments;
+}
+
+// Legacy: extract attachments from old jm-attachments block format
+function extractLegacyAttachmentBlock(raw: string): { content: string; attachments: MemoAttachment[] } {
 	const attachmentBlockMatch = ATTACHMENT_BLOCK_REGEX.exec(raw);
 	if (!attachmentBlockMatch) {
 		return {
@@ -147,14 +179,36 @@ export function parseMemoBlockBody(body: string): ParsedMemoBlock | null {
 	}
 
 	const rawContent = body.replace(CREATED_LINE_REGEX, "").trim();
-	const { content: rawBodyContent, attachments } = extractAttachmentBlock(rawContent);
-	const { content, tags } = splitMemoContentAndTags(rawBodyContent);
+
+	// First, extract legacy attachment block (for backward compatibility)
+	const { content: rawBodyContent, attachments: legacyAttachments } = extractLegacyAttachmentBlock(rawContent);
+
+	// Then, extract wiki-link attachments from content
+	const wikiLinkAttachments = extractWikiLinkAttachments(rawBodyContent);
+
+	// Merge attachments, avoiding duplicates
+	const allPaths = new Set<string>();
+	const allAttachments: MemoAttachment[] = [];
+
+	for (const att of [...wikiLinkAttachments, ...legacyAttachments]) {
+		if (!allPaths.has(att.path)) {
+			allPaths.add(att.path);
+			allAttachments.push(att);
+		}
+	}
+
+	// Remove image wiki-links from content (they'll be shown in attachment area)
+	const contentWithoutImageLinks = rawBodyContent
+		.replace(/!?\[\[([^\]|]+\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif|tiff?))(?:\|[^\]]+)?\]\]\n?/gi, "")
+		.trim();
+
+	const { content, tags } = splitMemoContentAndTags(contentWithoutImageLinks);
 	return {
 		createdAt,
 		createdLabel,
 		content,
 		tags,
-		attachments,
+		attachments: allAttachments,
 	};
 }
 

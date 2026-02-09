@@ -3,18 +3,22 @@ import type JournalMemosPlugin from "./main";
 
 export interface JournalMemosSettings {
 	dailyNotesFolder: string;
+	dailyNotePathFormat: string;
 	attachmentsFolder: string;
 	streamDays: number;
 	heatmapDays: number;
 	memoImageMaxWidth: number;
+	exploreColumnLimit: number;
 }
 
 export const DEFAULT_SETTINGS: JournalMemosSettings = {
-	dailyNotesFolder: "Daily",
-	attachmentsFolder: "",
+	dailyNotesFolder: "DailyNotes",
+	dailyNotePathFormat: "{folder}/{yyyy}/{MM}/{yyyy-MM-dd}.md",
+	attachmentsFolder: "{folder}/_attachments",
 	streamDays: 30,
 	heatmapDays: 140,
 	memoImageMaxWidth: 640,
+	exploreColumnLimit: 0,
 };
 
 function parsePositiveInt(value: string, fallback: number): number {
@@ -39,10 +43,10 @@ export class JournalMemosSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Daily notes folder")
-			.setDesc("Folder containing daily notes named yyyy-mm-dd.md.")
+			.setDesc("Root folder for daily notes.")
 			.addText((text) =>
 				text
-					.setPlaceholder("Daily")
+					.setPlaceholder("DailyNotes")
 					.setValue(this.plugin.settings.dailyNotesFolder)
 					.onChange(async (value) => {
 						this.plugin.settings.dailyNotesFolder = value.trim();
@@ -53,11 +57,26 @@ export class JournalMemosSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Attachments folder")
-			.setDesc("Where pasted or uploaded memo attachments are stored. Leave empty to use <daily folder>/_attachments.")
+			.setName("Daily note path format")
+			.setDesc("Path pattern for daily notes. Use {folder} for root folder, {yyyy}, {MM}, {dd} for date parts. Example: {folder}/{yyyy}/{MM}/{yyyy-MM-dd}.md")
 			.addText((text) =>
 				text
-					.setPlaceholder("Daily/_attachments")
+					.setPlaceholder("{folder}/{yyyy}/{MM}/{yyyy-MM-dd}.md")
+					.setValue(this.plugin.settings.dailyNotePathFormat)
+					.onChange(async (value) => {
+						this.plugin.settings.dailyNotePathFormat = value.trim() || DEFAULT_SETTINGS.dailyNotePathFormat;
+						await this.plugin.saveSettings();
+						this.plugin.memoService.clearCache();
+						await this.plugin.refreshOpenViews();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Attachments folder")
+			.setDesc("Where pasted or uploaded memo attachments are stored. Use {folder} to refer to the daily notes folder.")
+			.addText((text) =>
+				text
+					.setPlaceholder("{folder}/_attachments")
 					.setValue(this.plugin.settings.attachmentsFolder)
 					.onChange(async (value) => {
 						this.plugin.settings.attachmentsFolder = value.trim();
@@ -102,6 +121,21 @@ export class JournalMemosSettingTab extends PluginSettingTab {
 					.setValue(String(this.plugin.settings.memoImageMaxWidth))
 					.onChange(async (value) => {
 						this.plugin.settings.memoImageMaxWidth = parsePositiveInt(value, DEFAULT_SETTINGS.memoImageMaxWidth);
+						await this.plugin.saveSettings();
+						await this.plugin.refreshOpenViews();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Explore View Columns")
+			.setDesc("Fixed number of columns in Explore view. Set to 0 for responsive auto-layout.")
+			.addText((text) =>
+				text
+					.setPlaceholder("0")
+					.setValue(String(this.plugin.settings.exploreColumnLimit))
+					.onChange(async (value) => {
+						const parsed = Number.parseInt(value, 10);
+						this.plugin.settings.exploreColumnLimit = isNaN(parsed) || parsed < 0 ? 0 : parsed;
 						await this.plugin.saveSettings();
 						await this.plugin.refreshOpenViews();
 					}),

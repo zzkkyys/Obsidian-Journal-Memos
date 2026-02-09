@@ -1,9 +1,9 @@
 {
-	"id": "my-obsidian-memos2",
+	"id": "com.zzkkyys.journalmemos",
 	"name": "Journal Memos",
 	"version": "0.1.0",
 	"minAppVersion": "1.5.0",
 	"description": "Memos-style stream and heatmap backed by your daily notes.",
-	"author": "ay",
+	"author": "zzkkyys",
 	"isDesktopOnly": false
 }

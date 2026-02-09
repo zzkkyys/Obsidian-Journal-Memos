@@ -1,4 +1,5 @@
 import {
+	addIcon,
 	App,
 	MarkdownPostProcessorContext,
 	MarkdownRenderChild,
@@ -9,6 +10,8 @@ import {
 	TFile,
 	WorkspaceLeaf,
 } from "obsidian";
+
+const JOURNAL_MEMOS_ICON = `<svg viewBox="0 0 100 100" version="1.1" xmlns="http://www.w3.org/2000/svg" class="jm-color-icon"><rect x="12" y="12" width="76" height="76" rx="12" fill="#FFca28" stroke="#F0C000" stroke-width="4"/><line x1="28" y1="38" x2="72" y2="38" stroke="#795548" stroke-width="6" stroke-linecap="round"/><line x1="28" y1="58" x2="72" y2="58" stroke="#795548" stroke-width="6" stroke-linecap="round"/><line x1="28" y1="78" x2="52" y2="78" stroke="#795548" stroke-width="6" stroke-linecap="round"/><circle cx="72" cy="72" r="14" fill="#66BB6A" stroke="#2E7D32" stroke-width="2"/><polyline points="66,72 70,76 78,66" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 import { registerCommands } from "./commands/register-commands";
 import { parseMemoBlockBody } from "./data/memo-parser";
 import { MemoService } from "./features/memo-service";
@@ -440,7 +443,7 @@ export default class JournalMemosPlugin extends Plugin {
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
-		this.memoService = new MemoService(this.app, () => this.settings);
+		this.memoService = new MemoService(this.app, () => this.settings, this.manifest.dir ?? "");
 
 		this.registerView(
 			JOURNAL_MEMOS_VIEW_TYPE,
@@ -448,11 +451,23 @@ export default class JournalMemosPlugin extends Plugin {
 		);
 		registerCommands(this);
 		this.addSettingTab(new JournalMemosSettingTab(this.app, this));
-		this.addRibbonIcon("calendar-check", "Open memos view", () => {
+		addIcon("journal-memos-colorful", JOURNAL_MEMOS_ICON);
+		const ribbonIconEl = this.addRibbonIcon("journal-memos-colorful", "Open memos view", () => {
 			void this.activateView();
 		});
+		ribbonIconEl.addClass("jm-ribbon-icon-colorful");
 		this.registerMarkdownCodeBlockProcessor("memos", (source, el, ctx) => {
 			void this.renderInlineMemoBlock(source, el, ctx);
+		});
+
+		this.addCommand({
+			id: "rebuild-attachment-index",
+			name: "Rebuild Attachment Index",
+			callback: async () => {
+				new Notice("Rebuilding attachment index... This may take a moment.");
+				await this.memoService.rebuildAttachmentIndex();
+				new Notice("Attachment index rebuilt successfully.");
+			},
 		});
 
 		this.registerEvent(
@@ -693,12 +708,12 @@ export default class JournalMemosPlugin extends Plugin {
 		const candidates =
 			holder instanceof HTMLElement
 				? [
-						holder.getAttribute("src"),
-						holder.getAttribute("data-src"),
-						holder.getAttribute("data-href"),
-						holder.getAttribute("href"),
-						imageEl.getAttribute("alt"),
-					]
+					holder.getAttribute("src"),
+					holder.getAttribute("data-src"),
+					holder.getAttribute("data-href"),
+					holder.getAttribute("href"),
+					imageEl.getAttribute("alt"),
+				]
 				: [imageEl.getAttribute("alt")];
 
 		for (const candidate of candidates) {

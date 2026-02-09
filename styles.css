@@ -82,11 +82,9 @@
 
 .jm-composer-panel {
 	position: static;
-	background: linear-gradient(
-		160deg,
-		color-mix(in srgb, var(--interactive-accent) 11%, var(--background-primary-alt)) 0%,
-		var(--background-primary-alt) 52%
-	);
+	background: linear-gradient(160deg,
+			color-mix(in srgb, var(--interactive-accent) 11%, var(--background-primary-alt)) 0%,
+			var(--background-primary-alt) 52%);
 }
 
 .jm-attachment-input {
@@ -185,38 +183,82 @@
 	gap: 8px;
 }
 
+/* Attachments Page: Waterfall Layout */
 .jm-attachments-timeline {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-	padding-left: 4px;
+	column-count: 3;
+	column-gap: 16px;
+	padding: 8px;
+	display: block;
+	/* Override flex layout */
 }
 
+/* Responsive columns */
+@media (max-width: 900px) {
+	.jm-attachments-timeline {
+		column-count: 2;
+	}
+}
+
+@media (max-width: 500px) {
+	.jm-attachments-timeline {
+		column-count: 1;
+	}
+}
+
+/* Remove timeline line */
 .jm-attachments-timeline::before {
-	content: "";
-	position: absolute;
-	left: 11px;
-	top: 6px;
-	bottom: 6px;
-	width: 1px;
-	background: var(--background-modifier-border);
+	display: none;
 }
 
+/* Prepare item for column flow */
 .jm-attachment-item {
-	position: relative;
-	padding-left: 24px;
+	break-inside: avoid;
+	/* Prevent card splitting */
+	margin-bottom: 16px;
+	padding-left: 0;
+	/* Clear timeline padding */
 }
 
+/* Hide timeline dot */
 .jm-attachment-dot {
-	position: absolute;
-	left: 6px;
-	top: 12px;
-	width: 10px;
-	height: 10px;
-	border-radius: 999px;
+	display: none;
+}
+
+/* Date Badge Style */
+.jm-date-badge {
+	background: var(--background-modifier-border);
+	color: var(--text-normal);
+	font-size: 11px;
+	font-weight: 600;
+	padding: 2px 8px;
+	border-radius: 99px;
+	border: none;
+	cursor: pointer;
+	line-height: normal;
+	transition: background 0.2s;
+}
+
+.jm-date-badge:hover {
 	background: var(--interactive-accent);
-	border: 2px solid var(--background-primary-alt);
+	color: var(--text-on-accent);
+}
+
+.jm-time-label {
+	font-size: 11px;
+	color: var(--text-muted);
+}
+
+/* Ensure header alignment for badge */
+.jm-attachment-content .jm-card-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 8px;
+}
+
+/* Allow images to determine height in waterfall */
+.jm-attachments-timeline img {
+	max-height: none !important;
 }
 
 .jm-attachment-content {
@@ -563,8 +605,7 @@
 	max-width: 100% !important;
 	max-height: 100% !important;
 	object-fit: contain;
-	transform: translate(var(--jm-preview-offset-x, 0px), var(--jm-preview-offset-y, 0px))
-		scale(var(--jm-preview-scale, 1));
+	transform: translate(var(--jm-preview-offset-x, 0px), var(--jm-preview-offset-y, 0px)) scale(var(--jm-preview-scale, 1));
 	transform-origin: center center;
 	border-radius: 10px;
 	box-shadow:
@@ -639,13 +680,27 @@
 
 .jm-icon-button {
 	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	color: var(--text-normal);
-	border-radius: 6px;
-	width: 22px;
-	height: 22px;
-	line-height: 18px;
+	background: transparent;
+	color: var(--text-muted);
+	border-radius: 4px;
+	width: 24px;
+	height: 24px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
 	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.jm-icon-button:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.jm-icon-button svg {
+	width: 16px;
+	height: 16px;
 }
 
 .jm-calendar-actions {
@@ -899,4 +954,129 @@
 	.jm-explore-grid {
 		grid-template-columns: 1fr;
 	}
+}
+
+/* Stream View: Separated Cards Style */
+
+/* Remove group background since we want separate cards */
+.memo-group {
+	background: transparent !important;
+	border: none !important;
+	padding: 0 !important;
+	margin: 0 !important;
+}
+
+.memo-group:nth-child(odd),
+.memo-group:nth-child(even),
+.theme-dark .memo-group:nth-child(odd),
+.theme-dark .memo-group:nth-child(even) {
+	background-color: transparent !important;
+	border: none !important;
+}
+
+/* Style individual cards */
+.memo-group .jm-card {
+	background-color: var(--background-secondary) !important;
+	border: 1px solid var(--background-modifier-border) !important;
+	border-radius: 8px !important;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
+	margin-bottom: 16px !important;
+	/* Space between memos */
+	padding: 12px 16px !important;
+}
+
+/* Remove redundant separator logic since we have full borders */
+.memo-group .jm-card:not(:last-child) {
+	border-bottom: 1px solid var(--background-modifier-border) !important;
+}
+
+/* Explore View: Waterfall Layout (Masonry) */
+.jm-explore-grid {
+	display: block !important;
+	column-count: 3;
+	column-gap: 16px;
+	padding: 0 8px;
+}
+
+/* Responsive Columns */
+@media (max-width: 1100px) {
+	.jm-explore-grid {
+		column-count: 2;
+	}
+}
+
+@media (max-width: 600px) {
+	.jm-explore-grid {
+		column-count: 1;
+	}
+}
+
+/* Card Styles for Waterfall */
+.jm-explore-grid .jm-card {
+	background-color: var(--background-secondary) !important;
+	border: 1px solid var(--background-modifier-border) !important;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
+	border-radius: 8px !important;
+	break-inside: avoid;
+	margin-bottom: 16px !important;
+	width: 100% !important;
+	padding: 12px 16px !important;
+	margin-right: 0 !important;
+}
+
+/* Ensure odd/even groups don't have weird backgrounds */
+.jm-explore-grid .jm-card.is-odd,
+.jm-explore-grid .jm-card.is-even,
+.theme-dark .jm-explore-grid .jm-card.is-odd,
+.theme-dark .jm-explore-grid .jm-card.is-even {
+	background-color: var(--background-secondary) !important;
+	border: 1px solid var(--background-modifier-border) !important;
+}
+
+/* Group Separation: Add extra vertical space after the last item of a day */
+.jm-explore-grid .jm-card.is-last-in-group {
+	margin-bottom: 48px !important;
+	margin-right: 0 !important;
+}
+
+/* Inline Image Grid for Explore cards - Adjusted for waterfall cards */
+.jm-explore-grid .jm-card-media-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.jm-media-item {
+	border-radius: 4px;
+	overflow: hidden;
+	background: var(--background-secondary-alt);
+	aspect-ratio: 16/9;
+}
+
+.jm-media-item img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+	cursor: zoom-in;
+}
+
+/* Custom colorful ribbon icon - Ensure colors override theme defaults */
+.jm-ribbon-icon-colorful svg rect {
+	fill: #FFca28 !important;
+	stroke: #F0C000 !important;
+}
+
+.jm-ribbon-icon-colorful svg line {
+	stroke: #795548 !important;
+}
+
+.jm-ribbon-icon-colorful svg circle {
+	fill: #66BB6A !important;
+	stroke: #2E7D32 !important;
+}
+
+.jm-ribbon-icon-colorful svg polyline {
+	stroke: #FFFFFF !important;
 }

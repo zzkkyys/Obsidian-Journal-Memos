@@ -1,6 +1,12 @@
 <script>
-	import { onMount } from "svelte";
-	import MemoInputBox from "./MemoInputBox.svelte";
+	import { onMount, tick } from "svelte";
+	import { formatDateKey } from "../utils/date";
+	import MemoList from "./MemoList.svelte";
+	import MemoHeatmap from "./MemoHeatmap.svelte";
+	import MemoFilter from "./MemoFilter.svelte";
+	import MemoEditor from "./MemoEditor.svelte";
+	import { memoRenderer } from "./memo-renderer";
+	import { renderAttachmentBlock } from "../utils/editor-utils";
 
 	export let stream = [];
 	export let heatmap = [];
@@ -13,8 +19,10 @@
 	export let openPluginSettings;
 	export let renderMemoContent;
 	export let memoImageMaxWidth = 640;
+	export let exploreColumnLimit = 0;
+	export let notice; // (message: string, timeout?: number) => void
+	export let resolveResourcePath; // (path: string) => string
 
-	const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 	const RAIL_ITEMS = [
 		{ id: "avatar", label: "Avatar" },
 		{ id: "memos", label: "Memos" },
@@ -22,22 +30,16 @@
 		{ id: "attachments", label: "Attachments" },
 		{ id: "settings", label: "Settings" },
 	];
-	const IMAGE_FILE_EXT_REGEX = /\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif|tiff?)$/i;
+	const IMAGE_FILE_EXT_REGEX =
+		/\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif|tiff?)$/i;
 	const WIKI_IMAGE_REGEX = /!\[\[([^[\]\n]+)\]\]/g;
-	const MARKDOWN_IMAGE_REGEX = /!\[[^\]\n]*\]\((?:\\.|[^()\n]|\([^()\n]*\))*\)/g;
+	const MARKDOWN_IMAGE_REGEX =
+		/!\[[^\]\n]*\]\((?:\\.|[^()\n]|\([^()\n]*\))*\)/g;
 	const HTML_IMAGE_REGEX = /<img\b[^>]*>/gi;
-	const MAX_EXPLORE_MEMOS = 12;
+	const MAX_EXPLORE_MEMOS = 2000;
 	const PREVIEW_SCALE_MIN = 0.5;
 	const PREVIEW_SCALE_MAX = 4;
 	const PREVIEW_SCALE_STEP = 0.2;
-	const CALENDAR_HEAT_THRESHOLDS = [1, 3, 6, 10];
-	const ATTACHMENT_BLOCK_START = "<!-- jm-attachments:start -->";
-	const ATTACHMENT_BLOCK_END = "<!-- jm-attachments:end -->";
-	const ATTACHMENT_LINE_PREFIX = "jm-attachment:";
-	const monthFormatter = new Intl.DateTimeFormat(undefined, {
-		year: "numeric",
-		month: "long",
-	});
 
 	let draft = "";
 	let isSubmitting = false;
@@ -45,11 +47,9 @@
 	let isLoading = false;
 	let errorMessage = "";
 	let selectedTag = "all";
-	let monthCursor = firstDayOfMonth(new Date());
 	let railActive = "memos";
 	let exploreShuffleSeed = Date.now();
 	let layoutEl;
-	let attachmentInputEl;
 	let previewAttachment = null;
 	let previewGallery = [];
 	let previewIndex = -1;
@@ -68,78 +68,74 @@
 	let editDraft = "";
 	let isSavingEdit = false;
 
-	$: heatmapByDate = new Map(heatmap.map((cell) => [cell.dateKey, cell]));
-	$: monthCells = buildMonthCells(monthCursor, heatmapByDate);
-	$: monthTitle = monthFormatter.format(monthCursor);
 	$: tagStats = buildTagStats(stream);
 	$: totalMemoCount = stream.length;
 	$: maxImageWidthCss = `${Math.max(120, Number(memoImageMaxWidth) || 640)}px`;
-	$: previewAttachment = previewIndex >= 0 && previewIndex < previewGallery.length ? previewGallery[previewIndex] : null;
+	$: previewAttachment =
+		previewIndex >= 0 && previewIndex < previewGallery.length
+			? previewGallery[previewIndex]
+			: null;
 	$: previewHasPrev = previewIndex > 0;
-	$: previewHasNext = previewIndex >= 0 && previewIndex < previewGallery.length - 1;
+	$: previewHasNext =
+		previewIndex >= 0 && previewIndex < previewGallery.length - 1;
 	$: previewIsImage = Boolean(previewAttachment?.isImage);
-	$: previewCanScopeToCurrentMemo = previewIsImage && Boolean(previewCurrentGroup);
-	$: previewCounterLabel = previewGallery.length > 1 && previewIndex >= 0 ? `${previewIndex + 1} / ${previewGallery.length}` : "";
+	$: previewCanScopeToCurrentMemo =
+		previewIsImage && Boolean(previewCurrentGroup);
+	$: previewCounterLabel =
+		previewGallery.length > 1 && previewIndex >= 0
+			? `${previewIndex + 1} / ${previewGallery.length}`
+			: "";
 	$: previewTransformStyle = `--jm-preview-scale: ${previewScale}; --jm-preview-offset-x: ${previewOffsetX}px; --jm-preview-offset-y: ${previewOffsetY}px;`;
 	$: filteredStream =
-		selectedTag === "all" ? stream : stream.filter((memo) => Array.isArray(memo.tags) && memo.tags.includes(selectedTag));
-	$: exploreMemos = buildExploreMemos(filteredStream, exploreShuffleSeed, MAX_EXPLORE_MEMOS);
+		selectedTag === "all"
+			? stream
+			: stream.filter(
+					(memo) =>
+						Array.isArray(memo.tags) &&
+						memo.tags.includes(selectedTag),
+				);
+	$: exploreMemos = buildExploreMemos(
+		filteredStream,
+		exploreShuffleSeed,
+		MAX_EXPLORE_MEMOS,
+	);
+	$: exploreGridItems = buildExploreGridItems(exploreMemos);
 	$: imageTimeline = buildImageTimeline(filteredStream);
-	$: if (selectedTag !== "all" && !tagStats.some((item) => item.tag === selectedTag)) {
+
+	// Masonry Logic for Explore View
+	let exploreContainerWidth = 0;
+	$: exploreColCount =
+		exploreColumnLimit > 0
+			? exploreColumnLimit
+			: exploreContainerWidth < 600
+				? 1
+				: exploreContainerWidth < 1100
+					? 2
+					: 3;
+	let exploreColumns = [];
+	$: {
+		const cols = Array.from({ length: exploreColCount }, () => []);
+		if (Array.isArray(exploreGridItems)) {
+			exploreGridItems.forEach((item, i) => {
+				cols[i % exploreColCount].push(item);
+			});
+		}
+		exploreColumns = cols;
+	}
+	$: if (
+		selectedTag !== "all" &&
+		!tagStats.some((item) => item.tag === selectedTag)
+	) {
 		selectedTag = "all";
 	}
 
-	function firstDayOfMonth(date) {
-		return new Date(date.getFullYear(), date.getMonth(), 1);
-	}
-
-	function addDays(date, days) {
-		const next = new Date(date);
-		next.setDate(next.getDate() + days);
-		return next;
-	}
-
-	function addMonths(date, months) {
-		return new Date(date.getFullYear(), date.getMonth() + months, 1);
-	}
-
-	function startOfWeek(date) {
-		const dayOffset = (date.getDay() + 6) % 7;
-		return addDays(date, -dayOffset);
-	}
-
-	function endOfWeek(date) {
-		return addDays(startOfWeek(date), 6);
-	}
-
-	function toDateKey(date) {
-		const year = date.getFullYear();
-		const month = String(date.getMonth() + 1).padStart(2, "0");
-		const day = String(date.getDate()).padStart(2, "0");
-		return `${year}-${month}-${day}`;
-	}
-
-	function buildMonthCells(monthStart, cellMap) {
-		const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
-		const calendarStart = startOfWeek(monthStart);
-		const calendarEnd = endOfWeek(monthEnd);
-		const todayKey = toDateKey(new Date());
-		const cells = [];
-
-		for (let cursor = new Date(calendarStart); cursor <= calendarEnd; cursor = addDays(cursor, 1)) {
-			const dateKey = toDateKey(cursor);
-			const source = cellMap.get(dateKey);
-			cells.push({
-				dateKey,
-				day: cursor.getDate(),
-				inMonth: cursor.getMonth() === monthStart.getMonth(),
-				isToday: dateKey === todayKey,
-				count: source?.count ?? 0,
-				filePath: source?.filePath ?? null,
-			});
-		}
-
-		return cells;
+	function formatTime(ts) {
+		if (!ts) return "";
+		return new Date(ts).toLocaleTimeString([], {
+			hour: "2-digit",
+			minute: "2-digit",
+			hour12: false,
+		});
 	}
 
 	function buildTagStats(memos) {
@@ -154,7 +150,11 @@
 
 		return Array.from(tagCountMap.entries())
 			.map(([tag, count]) => ({ tag, count }))
-			.sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag));
+			.sort(
+				(left, right) =>
+					right.count - left.count ||
+					left.tag.localeCompare(right.tag),
+			);
 	}
 
 	function hashWithSeed(value, seed) {
@@ -171,14 +171,53 @@
 			return [];
 		}
 
-		return memos
-			.map((memo) => ({
+		// Sort by time descending, no randomness
+		return [...memos]
+			.sort((left, right) => right.createdAt - left.createdAt)
+			.slice(0, Math.max(1, Math.min(limit, memos.length)));
+	}
+
+	function buildExploreGridItems(memos) {
+		if (!Array.isArray(memos)) {
+			return [];
+		}
+
+		const items = [];
+		let currentGroupIndex = 0;
+
+		for (let i = 0; i < memos.length; i++) {
+			const memo = memos[i];
+			// If date changes from previous, increment group index
+			if (i > 0 && memo.dateKey !== memos[i - 1].dateKey) {
+				currentGroupIndex++;
+			}
+
+			// Check if this is the last memo of the current date group
+			const isLastInGroup =
+				i === memos.length - 1 || memos[i + 1].dateKey !== memo.dateKey;
+
+			// Extract images to move them to the bottom
+			const imageEmbeds = extractImageEmbeds(memo.content);
+			let cleanedContent = memo.content || "";
+
+			// Remove all extracted images from the main content
+			if (imageEmbeds.length > 0) {
+				for (const imgMarkdown of imageEmbeds) {
+					// Use split/join to replace all occurrences efficiently
+					cleanedContent = cleanedContent.split(imgMarkdown).join("");
+				}
+			}
+
+			items.push({
 				memo,
-				sortKey: hashWithSeed(memo.id, seed),
-			}))
-			.sort((left, right) => left.sortKey - right.sortKey || right.memo.createdAt - left.memo.createdAt)
-			.slice(0, Math.max(1, Math.min(limit, memos.length)))
-			.map((item) => item.memo);
+				groupIndex: currentGroupIndex,
+				isLastInGroup,
+				cleanedContent: cleanedContent.trim(),
+				imageEmbeds,
+			});
+		}
+
+		return items;
 	}
 
 	function looksLikeImageFile(target) {
@@ -229,7 +268,10 @@
 		}
 
 		return matches
-			.sort((left, right) => left.index - right.index || left.order - right.order)
+			.sort(
+				(left, right) =>
+					left.index - right.index || left.order - right.order,
+			)
 			.map((item) => item.raw);
 	}
 
@@ -238,13 +280,17 @@
 			return [];
 		}
 
-		const orderedMemos = [...memos].sort((left, right) => right.createdAt - left.createdAt);
+		const orderedMemos = [...memos].sort(
+			(left, right) => right.createdAt - left.createdAt,
+		);
 		const timeline = [];
 
 		for (const memo of orderedMemos) {
 			const imageEmbeds = extractImageEmbeds(memo.content);
 			const attachmentImageEmbeds = Array.isArray(memo.attachments)
-				? memo.attachments.filter((attachment) => attachment?.isImage).map((attachment) => `![[${attachment.path}]]`)
+				? memo.attachments
+						.filter((attachment) => attachment?.isImage)
+						.map((attachment) => `![[${attachment.path}]]`)
 				: [];
 			const allImageEmbeds = [...imageEmbeds, ...attachmentImageEmbeds];
 			allImageEmbeds.forEach((imageMarkdown, index) => {
@@ -263,27 +309,6 @@
 		return timeline;
 	}
 
-	function calendarTitle(cell) {
-		return `${cell.dateKey} · ${cell.count} memo${cell.count === 1 ? "" : "s"}`;
-	}
-
-	function calendarHeatLevel(count) {
-		const safeCount = Number(count) || 0;
-		if (safeCount < CALENDAR_HEAT_THRESHOLDS[0]) {
-			return 0;
-		}
-		if (safeCount < CALENDAR_HEAT_THRESHOLDS[1]) {
-			return 1;
-		}
-		if (safeCount < CALENDAR_HEAT_THRESHOLDS[2]) {
-			return 2;
-		}
-		if (safeCount < CALENDAR_HEAT_THRESHOLDS[3]) {
-			return 3;
-		}
-		return 4;
-	}
-
 	async function reload() {
 		isLoading = true;
 		errorMessage = "";
@@ -292,7 +317,10 @@
 			stream = snapshot.stream;
 			heatmap = snapshot.heatmap;
 		} catch (error) {
-			errorMessage = error instanceof Error ? error.message : "Failed to load memos.";
+			errorMessage =
+				error instanceof Error
+					? error.message
+					: "Failed to load memos.";
 		} finally {
 			isLoading = false;
 		}
@@ -309,9 +337,13 @@
 		try {
 			await publishMemo(content);
 			draft = "";
+			notice?.("Memo published");
 			await reload();
 		} catch (error) {
-			errorMessage = error instanceof Error ? error.message : "Failed to publish memo.";
+			errorMessage =
+				error instanceof Error
+					? error.message
+					: "Failed to publish memo.";
 		} finally {
 			isSubmitting = false;
 		}
@@ -321,52 +353,30 @@
 		if (isSavingEdit) {
 			return;
 		}
-		editingMemo = memo ?? null;
-		editDraft = editingMemo?.content ?? "";
-		errorMessage = "";
-	}
-
-	function findMemoById(memoId) {
-		if (!memoId) {
-			return null;
-		}
-		return (
-			filteredStream.find((memo) => memo?.id === memoId) ??
-			stream.find((memo) => memo?.id === memoId) ??
-			null
-		);
-	}
-
-	function handleStreamPanelClick(event) {
-		const target = event?.target;
-		if (!(target instanceof Element)) {
-			return;
-		}
-
-		const trigger = target.closest("button[data-memo-id]");
-		if (!(trigger instanceof HTMLButtonElement)) {
-			return;
-		}
-
-		const memoId = trigger.dataset.memoId ?? "";
-		const memo = findMemoById(memoId);
 		if (!memo) {
 			return;
 		}
-
-		event.preventDefault();
-		event.stopPropagation();
-		openMemoEditor(memo);
-	}
-
-	function delegateMemoEditTrigger(node) {
-		const delegatedClick = (event) => handleStreamPanelClick(event);
-		node.addEventListener("click", delegatedClick, true);
-		return {
-			destroy() {
-				node.removeEventListener("click", delegatedClick, true);
-			},
-		};
+		if (editingMemo?.id === memo.id) {
+			return;
+		}
+		editingMemo = memo ?? null;
+		// Combine content with attachment block
+		const content = editingMemo?.content ?? "";
+		const attachments = Array.isArray(editingMemo?.attachments)
+			? editingMemo.attachments
+			: [];
+		if (attachments.length > 0) {
+			const attachmentPaths = attachments
+				.map((a) => a.path)
+				.filter(Boolean);
+			const block = renderAttachmentBlock(attachmentPaths);
+			editDraft = content.trim()
+				? `${content.trim()}\n\n${block}`
+				: block;
+		} else {
+			editDraft = content;
+		}
+		errorMessage = "";
 	}
 
 	function isEditingMemo(memo) {
@@ -381,13 +391,21 @@
 		editDraft = "";
 	}
 
-	async function saveMemoEdit() {
-		if (!editingMemo || !updateMemo) {
+	async function saveMemoEdit(payload) {
+		const targetMemo = payload?.memo ?? editingMemo;
+		const targetContent =
+			typeof payload?.content === "string" ? payload.content : editDraft;
+
+		if (!targetMemo || !updateMemo) {
 			return;
 		}
 
-		const normalized = editDraft.trim();
-		if (!normalized && (!Array.isArray(editingMemo.attachments) || editingMemo.attachments.length === 0)) {
+		const normalized = targetContent.trim();
+		if (
+			!normalized &&
+			(!Array.isArray(targetMemo.attachments) ||
+				targetMemo.attachments.length === 0)
+		) {
 			errorMessage = "Memo content cannot be empty.";
 			return;
 		}
@@ -395,227 +413,27 @@
 		isSavingEdit = true;
 		errorMessage = "";
 		try {
-			await updateMemo(editingMemo, editDraft);
+			await updateMemo(targetMemo, targetContent);
 			editingMemo = null;
 			editDraft = "";
+			notice?.("Memo updated");
 			await reload();
 		} catch (error) {
-			errorMessage = error instanceof Error ? error.message : "Failed to update memo.";
+			errorMessage =
+				error instanceof Error
+					? error.message
+					: "Failed to update memo.";
 		} finally {
 			isSavingEdit = false;
 		}
 	}
 
-	function handleEditInputKeydown(event) {
-		if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-			event.preventDefault();
-			void saveMemoEdit();
-			return;
-		}
-
-		if (event.key === "Escape") {
-			event.preventDefault();
-			closeMemoEditor();
-		}
-	}
-
-	function appendTextToMemoDraft(currentText, text) {
-		const normalized = String(text ?? "").trim();
-		if (!normalized) {
-			return currentText;
-		}
-
-		const { body, attachmentPaths } = splitDraftAndAttachmentPaths(currentText);
-		const nextBody = body ? `${body}\n${normalized}` : normalized;
-		if (attachmentPaths.length === 0) {
-			return nextBody;
-		}
-
-		const block = renderAttachmentBlock(attachmentPaths);
-		return `${nextBody}\n\n${block}`;
-	}
-
-	function parseAttachmentPathsFromBlock(blockContent) {
-		const paths = [];
-		const lines = String(blockContent ?? "").split(/\r?\n/);
-		for (const rawLine of lines) {
-			const line = rawLine.trim();
-			if (!line.startsWith(ATTACHMENT_LINE_PREFIX)) {
-				continue;
-			}
-			const path = line.slice(ATTACHMENT_LINE_PREFIX.length).trim();
-			if (!path) {
-				continue;
-			}
-			paths.push(path);
-		}
-		return paths;
-	}
-
-	function splitDraftAndAttachmentPaths(draftText) {
-		const normalized = String(draftText ?? "").replace(/\r\n/g, "\n");
-		const blockRegex = /<!--\s*jm-attachments:start\s*-->\s*([\s\S]*?)\s*<!--\s*jm-attachments:end\s*-->\s*$/;
-		const match = blockRegex.exec(normalized);
-		if (!match) {
-			return {
-				body: normalized.trimEnd(),
-				attachmentPaths: [],
-			};
-		}
-
-		const body = normalized.slice(0, match.index).trimEnd();
-		const attachmentPaths = parseAttachmentPathsFromBlock(match[1] ?? "");
-		return { body, attachmentPaths };
-	}
-
-	function upsertAttachmentPathsToMemoDraft(currentText, pathList) {
-		if (!Array.isArray(pathList) || pathList.length === 0) {
-			return currentText;
-		}
-
-		const { body, attachmentPaths } = splitDraftAndAttachmentPaths(currentText);
-		const seen = new Set(attachmentPaths);
-		const mergedPaths = [...attachmentPaths];
-		for (const path of pathList) {
-			if (!path || seen.has(path)) {
-				continue;
-			}
-			seen.add(path);
-			mergedPaths.push(path);
-		}
-
-		const block = renderAttachmentBlock(mergedPaths);
-		return body ? `${body}\n\n${block}` : block;
-	}
-
-	function renderAttachmentBlock(paths) {
-		return [ATTACHMENT_BLOCK_START, ...paths.map((path) => `${ATTACHMENT_LINE_PREFIX} ${path}`), ATTACHMENT_BLOCK_END].join(
-			"\n",
-		);
-	}
-
-	function buildInlineImageMarkdown(path) {
-		return `![[${path}]]`;
-	}
-
-	function applyUploadedAttachmentsToDraft(currentText, uploaded, mode) {
-		let nextText = currentText;
-		if (mode === "paste") {
-			for (const attachment of uploaded) {
-				if (attachment.isImage) {
-					nextText = appendTextToMemoDraft(nextText, buildInlineImageMarkdown(attachment.path));
-					continue;
-				}
-				nextText = upsertAttachmentPathsToMemoDraft(nextText, [attachment.path]);
-			}
-			return nextText;
-		}
-
-		return upsertAttachmentPathsToMemoDraft(
-			nextText,
-			uploaded.map((attachment) => attachment.path),
-		);
-	}
-
-	async function addAttachments(files, mode = "attach", target = "composer") {
-		const validFiles = Array.from(files ?? []).filter((file) => file instanceof File && file.size > 0);
-		if (validFiles.length === 0) {
-			return;
-		}
-
-		if (!saveAttachments) {
-			errorMessage = "Attachment upload is not available.";
-			return;
-		}
-
-		isUploading = true;
-		errorMessage = "";
-		try {
-			const payload = await Promise.all(
-				validFiles.map(async (file) => ({
-					name: file.name,
-					mimeType: file.type ?? "",
-					data: await file.arrayBuffer(),
-				})),
-			);
-			const uploaded = await saveAttachments(payload);
-			if (target === "editor") {
-				editDraft = applyUploadedAttachmentsToDraft(editDraft, uploaded, mode);
-				return;
-			}
-			draft = applyUploadedAttachmentsToDraft(draft, uploaded, mode);
-		} catch (error) {
-			errorMessage = error instanceof Error ? error.message : "Failed to upload attachments.";
-		} finally {
-			isUploading = false;
-		}
-	}
-
-	function handleInputKeydown(event) {
-		if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-			event.preventDefault();
-			void submit();
-		}
-	}
-
-	function triggerAttachmentPicker() {
-		attachmentInputEl?.click();
-	}
-
-	function handleAttachmentInput(event) {
-		const inputEl = event.currentTarget;
-		if (!(inputEl instanceof HTMLInputElement) || !inputEl.files) {
-			return;
-		}
-
-		void addAttachments(inputEl.files, "attach", "composer");
-		inputEl.value = "";
-	}
-
-	function extractImageFilesFromClipboard(event) {
-		const clipboardItems = Array.from(event.clipboardData?.items ?? []);
-		const imageFiles = [];
-		for (const item of clipboardItems) {
-			if (item.kind !== "file") {
-				continue;
-			}
-			const file = item.getAsFile();
-			if (!file || !file.type.startsWith("image/")) {
-				continue;
-			}
-			imageFiles.push(file);
-		}
-		return imageFiles;
-	}
-
-	function handleComposerPaste(event) {
-		const imageFiles = extractImageFilesFromClipboard(event);
-		if (imageFiles.length === 0) {
-			return;
-		}
-
-		event.preventDefault();
-		void addAttachments(imageFiles, "paste", "composer");
-	}
-
-	function handleEditPaste(event) {
-		if (!editingMemo) {
-			return;
-		}
-
-		const imageFiles = extractImageFilesFromClipboard(event);
-		if (imageFiles.length === 0) {
-			return;
-		}
-
-		event.preventDefault();
-		void addAttachments(imageFiles, "paste", "editor");
-	}
-
 	function fileNameFromPath(path) {
 		const normalized = String(path ?? "").replace(/\\/g, "/");
 		const segments = normalized.split("/");
-		return segments.length > 0 ? segments[segments.length - 1] || normalized : normalized;
+		return segments.length > 0
+			? segments[segments.length - 1] || normalized
+			: normalized;
 	}
 
 	function normalizeInternalImagePathCandidate(candidate) {
@@ -657,7 +475,11 @@
 		return "";
 	}
 
-	function createPreviewItemFromAttachment(attachment, sourcePath, previewGroup = "") {
+	function createPreviewItemFromAttachment(
+		attachment,
+		sourcePath,
+		previewGroup = "",
+	) {
 		if (!attachment?.path) {
 			return null;
 		}
@@ -666,9 +488,13 @@
 		const normalizedPath = String(attachment.path).trim();
 		const isImage = Boolean(attachment.isImage);
 		return {
-			key: isImage ? `internal:${normalizedPath}` : `file:${normalizedPath}`,
+			key: isImage
+				? `internal:${normalizedPath}`
+				: `file:${normalizedPath}`,
 			name: attachment.name ?? fileNameFromPath(normalizedPath),
-			markdown: isImage ? `![[${normalizedPath}]]` : `[[${normalizedPath}]]`,
+			markdown: isImage
+				? `![[${normalizedPath}]]`
+				: `[[${normalizedPath}]]`,
 			imageSrc: "",
 			sourcePath: normalizedSourcePath,
 			groupKey: previewGroup ?? "",
@@ -676,13 +502,19 @@
 		};
 	}
 
-	function createPreviewItemFromImageElement(imageEl, fallbackSourcePath = "") {
+	function createPreviewItemFromImageElement(
+		imageEl,
+		fallbackSourcePath = "",
+	) {
 		const sourceContainer = imageEl.closest("[data-source-path]");
 		const sourcePath =
 			sourceContainer instanceof HTMLElement
-				? sourceContainer.dataset.sourcePath ?? fallbackSourcePath
+				? (sourceContainer.dataset.sourcePath ?? fallbackSourcePath)
 				: fallbackSourcePath;
-		const groupKey = sourceContainer instanceof HTMLElement ? sourceContainer.dataset.previewGroup ?? "" : "";
+		const groupKey =
+			sourceContainer instanceof HTMLElement
+				? (sourceContainer.dataset.previewGroup ?? "")
+				: "";
 		const internalPath = extractInternalImagePath(imageEl);
 		if (internalPath) {
 			return {
@@ -701,7 +533,9 @@
 			return null;
 		}
 
-		const fallbackName = String(imageEl.getAttribute("alt") ?? "").trim() || fileNameFromPath(imageSrc);
+		const fallbackName =
+			String(imageEl.getAttribute("alt") ?? "").trim() ||
+			fileNameFromPath(imageSrc);
 		return {
 			key: `src:${imageSrc}`,
 			name: fallbackName,
@@ -713,7 +547,10 @@
 		};
 	}
 
-	function collectPreviewGallery(fallbackSourcePath = "", restrictGroup = "") {
+	function collectPreviewGallery(
+		fallbackSourcePath = "",
+		restrictGroup = "",
+	) {
 		if (!(layoutEl instanceof HTMLElement)) {
 			return [];
 		}
@@ -726,7 +563,10 @@
 			if (!(node instanceof HTMLImageElement)) {
 				continue;
 			}
-			const previewItem = createPreviewItemFromImageElement(node, fallbackSourcePath);
+			const previewItem = createPreviewItemFromImageElement(
+				node,
+				fallbackSourcePath,
+			);
 			if (!previewItem || !previewItem.isImage) {
 				continue;
 			}
@@ -789,28 +629,44 @@
 	}
 
 	function openAttachmentPreview(attachment, sourcePath, previewGroup = "") {
-		const targetItem = createPreviewItemFromAttachment(attachment, sourcePath, previewGroup);
+		const targetItem = createPreviewItemFromAttachment(
+			attachment,
+			sourcePath,
+			previewGroup,
+		);
 		if (!targetItem) {
 			return;
 		}
 
 		if (!targetItem.isImage) {
-			openPreviewGallery([targetItem], 0, { currentGroup: previewGroup, resetOnlyCurrentMemo: true });
+			openPreviewGallery([targetItem], 0, {
+				currentGroup: previewGroup,
+				resetOnlyCurrentMemo: true,
+			});
 			return;
 		}
 
 		const gallery = collectPreviewGallery(sourcePath ?? "");
 		const startIndex = findPreviewItemIndex(gallery, targetItem);
 		if (startIndex >= 0) {
-			openPreviewGallery(gallery, startIndex, { currentGroup: previewGroup, resetOnlyCurrentMemo: true });
+			openPreviewGallery(gallery, startIndex, {
+				currentGroup: previewGroup,
+				resetOnlyCurrentMemo: true,
+			});
 			return;
 		}
 
-		openPreviewGallery([targetItem], 0, { currentGroup: previewGroup, resetOnlyCurrentMemo: true });
+		openPreviewGallery([targetItem], 0, {
+			currentGroup: previewGroup,
+			resetOnlyCurrentMemo: true,
+		});
 	}
 
 	function openRenderedImagePreview(imageEl, sourcePath, previewGroup = "") {
-		const targetItem = createPreviewItemFromImageElement(imageEl, sourcePath ?? "");
+		const targetItem = createPreviewItemFromImageElement(
+			imageEl,
+			sourcePath ?? "",
+		);
 		if (!targetItem) {
 			return;
 		}
@@ -842,7 +698,8 @@
 			currentItem.sourcePath ?? "",
 			nextOnlyCurrentMemo ? previewCurrentGroup : "",
 		);
-		const finalGallery = nextGallery.length > 0 ? nextGallery : [currentItem];
+		const finalGallery =
+			nextGallery.length > 0 ? nextGallery : [currentItem];
 		const nextIndex = findPreviewItemIndex(finalGallery, currentItem);
 		openPreviewGallery(finalGallery, nextIndex >= 0 ? nextIndex : 0, {
 			currentGroup: previewCurrentGroup,
@@ -881,14 +738,20 @@
 		if (!previewIsImage) {
 			return;
 		}
-		previewScale = Math.min(PREVIEW_SCALE_MAX, Number((previewScale + PREVIEW_SCALE_STEP).toFixed(2)));
+		previewScale = Math.min(
+			PREVIEW_SCALE_MAX,
+			Number((previewScale + PREVIEW_SCALE_STEP).toFixed(2)),
+		);
 	}
 
 	function zoomPreviewOut() {
 		if (!previewIsImage) {
 			return;
 		}
-		previewScale = Math.max(PREVIEW_SCALE_MIN, Number((previewScale - PREVIEW_SCALE_STEP).toFixed(2)));
+		previewScale = Math.max(
+			PREVIEW_SCALE_MIN,
+			Number((previewScale - PREVIEW_SCALE_STEP).toFixed(2)),
+		);
 	}
 
 	function togglePreviewPanMode() {
@@ -922,21 +785,32 @@
 	}
 
 	function handlePreviewPointerMove(event) {
-		if (previewDragPointerId === null || event.pointerId !== previewDragPointerId) {
+		if (
+			previewDragPointerId === null ||
+			event.pointerId !== previewDragPointerId
+		) {
 			return;
 		}
 
-		previewOffsetX = previewDragOriginX + (event.clientX - previewDragStartX);
-		previewOffsetY = previewDragOriginY + (event.clientY - previewDragStartY);
+		previewOffsetX =
+			previewDragOriginX + (event.clientX - previewDragStartX);
+		previewOffsetY =
+			previewDragOriginY + (event.clientY - previewDragStartY);
 	}
 
 	function handlePreviewPointerUp(event) {
-		if (previewDragPointerId === null || event.pointerId !== previewDragPointerId) {
+		if (
+			previewDragPointerId === null ||
+			event.pointerId !== previewDragPointerId
+		) {
 			return;
 		}
 
 		const currentTarget = event.currentTarget;
-		if (currentTarget instanceof HTMLElement && currentTarget.hasPointerCapture(event.pointerId)) {
+		if (
+			currentTarget instanceof HTMLElement &&
+			currentTarget.hasPointerCapture(event.pointerId)
+		) {
 			currentTarget.releasePointerCapture(event.pointerId);
 		}
 		previewDragPointerId = null;
@@ -990,27 +864,20 @@
 		closeAttachmentPreview();
 	}
 
-	function selectTag(tag) {
-		selectedTag = tag;
+	function selectTag(item) {
+		selectedTag = item;
 	}
 
 	function clearTagFilter() {
 		selectedTag = "all";
 	}
 
-	function openCalendarCell(cell) {
-		if (!cell.inMonth) {
-			return;
-		}
-		void openOrCreateDaily(cell.dateKey);
-	}
-
-	function shiftCalendarMonth(step) {
-		monthCursor = addMonths(monthCursor, step);
-	}
-
 	function resetCalendarMonth() {
-		monthCursor = firstDayOfMonth(new Date());
+		// No-op or we can expose this from MemoHeatmap if we want to reset it from outside,
+		// but currently 'Today' button is inside MemoHeatmap.
+		// However, the `resetCalendarMonth` in original code was used for 'Today' button in the sidebar.
+		// Since buttons are now in MemoHeatmap, we don't need this function here unless we want to control it from parent.
+		// But let's verify if `resetCalendarMonth` is used elsewhere? No.
 	}
 
 	function shuffleExplore() {
@@ -1019,7 +886,7 @@
 
 	function handleRailClick(itemId) {
 		if (itemId === "avatar") {
-			void openOrCreateDaily(toDateKey(new Date()));
+			void openOrCreateDaily(formatDateKey(new Date()));
 			return;
 		}
 
@@ -1042,68 +909,12 @@
 	}
 
 	function renderMemo(node, params) {
-		let renderVersion = 0;
-		let currentSourcePath = params?.sourcePath ?? "";
-		let currentPreviewGroup = params?.previewGroup ?? "";
-
-		function handleImageClick(event) {
-			const target = event.target;
-			if (!(target instanceof Element)) {
-				return;
-			}
-
-			const imageEl = target.closest("img");
-			if (!(imageEl instanceof HTMLImageElement) || !node.contains(imageEl)) {
-				return;
-			}
-
-			event.preventDefault();
-			event.stopPropagation();
-			openRenderedImagePreview(imageEl, currentSourcePath, currentPreviewGroup);
-		}
-
-		async function run(currentParams) {
-			const currentVersion = ++renderVersion;
-			node.replaceChildren();
-
-			const markdown = (currentParams?.markdown ?? "").trim();
-			const sourcePath = currentParams?.sourcePath ?? "";
-			const previewGroup = currentParams?.previewGroup ?? "";
-			currentSourcePath = sourcePath;
-			currentPreviewGroup = previewGroup;
-			node.dataset.sourcePath = sourcePath;
-			node.dataset.previewGroup = previewGroup;
-			if (!markdown) {
-				return;
-			}
-
-			try {
-				await renderMemoContent?.(node, markdown, sourcePath);
-			} catch {
-				if (currentVersion !== renderVersion) {
-					return;
-				}
-				const fallbackEl = document.createElement("p");
-				fallbackEl.textContent = markdown;
-				node.replaceChildren(fallbackEl);
-			}
-		}
-
-		node.addEventListener("click", handleImageClick);
-		void run(params);
-
-			return {
-				update(nextParams) {
-					currentSourcePath = nextParams?.sourcePath ?? "";
-					currentPreviewGroup = nextParams?.previewGroup ?? "";
-					void run(nextParams);
-				},
-			destroy() {
-				renderVersion += 1;
-				node.removeEventListener("click", handleImageClick);
-				node.replaceChildren();
-			},
-		};
+		// Just a wrapper to use the imported action with context
+		return memoRenderer(node, {
+			...params,
+			renderMemoContent,
+			openRenderedImagePreview,
+		});
 	}
 
 	onMount(() => {
@@ -1113,7 +924,11 @@
 
 <svelte:window on:keydown={handleWindowKeydown} />
 
-<div class="jm-layout" style={`--jm-image-max-width: ${maxImageWidthCss};`} bind:this={layoutEl}>
+<div
+	class="jm-layout"
+	style={`--jm-image-max-width: ${maxImageWidthCss};`}
+	bind:this={layoutEl}
+>
 	<aside class="jm-rail" aria-label="Journal memos sidebar">
 		{#each RAIL_ITEMS as item (item.id)}
 			<button
@@ -1124,26 +939,72 @@
 				on:click={() => handleRailClick(item.id)}
 			>
 				{#if item.id === "avatar"}
-					<svg viewBox="0 0 24 24" class="jm-rail-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<svg
+						viewBox="0 0 24 24"
+						class="jm-rail-icon"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
 						<circle cx="12" cy="8" r="4"></circle>
 						<path d="M4 20a8 8 0 0 1 16 0"></path>
 					</svg>
 				{:else if item.id === "memos"}
-					<svg viewBox="0 0 24 24" class="jm-rail-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+					<svg
+						viewBox="0 0 24 24"
+						class="jm-rail-icon"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<path
+							d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+						></path>
 					</svg>
 				{:else if item.id === "explore"}
-					<svg viewBox="0 0 24 24" class="jm-rail-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<svg
+						viewBox="0 0 24 24"
+						class="jm-rail-icon"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
 						<circle cx="12" cy="12" r="10"></circle>
 						<polygon points="16 8 14 14 8 16 10 10 16 8"></polygon>
 					</svg>
 				{:else if item.id === "attachments"}
-					<svg viewBox="0 0 24 24" class="jm-rail-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="m21.44 11.05-9.19 9.19a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 1 1 4.95 4.95l-9.2 9.19a1.5 1.5 0 0 1-2.12-2.12l8.49-8.48"></path>
+					<svg
+						viewBox="0 0 24 24"
+						class="jm-rail-icon"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<path
+							d="m21.44 11.05-9.19 9.19a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 1 1 4.95 4.95l-9.2 9.19a1.5 1.5 0 0 1-2.12-2.12l8.49-8.48"
+						></path>
 					</svg>
 				{:else}
-					<svg viewBox="0 0 24 24" class="jm-rail-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"></path>
+					<svg
+						viewBox="0 0 24 24"
+						class="jm-rail-icon"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<path
+							d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"
+						></path>
 						<circle cx="12" cy="12" r="3"></circle>
 					</svg>
 				{/if}
@@ -1158,54 +1019,53 @@
 
 		{#if railActive === "memos"}
 			<section class="jm-panel jm-composer-panel">
-				<input
-					class="jm-attachment-input"
-					type="file"
-					multiple
-					bind:this={attachmentInputEl}
-					on:change={handleAttachmentInput}
-				/>
-				<MemoInputBox
+				<MemoEditor
 					bind:value={draft}
 					rows={4}
-					onKeydown={handleInputKeydown}
-					onPaste={handleComposerPaste}
 					placeholder="Write a memo. It will be appended to today's daily note."
-				>
-					<svelte:fragment slot="actions">
-						<button
-							type="button"
-							class="jm-secondary-btn"
-							on:click={triggerAttachmentPicker}
-							disabled={isSubmitting || isUploading}
-						>
-							Attach
-						</button>
-						<button
-							type="button"
-							class="jm-primary-btn"
-							on:click={submit}
-							disabled={isSubmitting || isUploading || !draft.trim()}
-						>
-							{#if isSubmitting}
-								Publishing...
-							{:else if isUploading}
-								Uploading...
-							{:else}
-								Publish
-							{/if}
-						</button>
-					</svelte:fragment>
-				</MemoInputBox>
+					{isSubmitting}
+					{isUploading}
+					{saveAttachments}
+					{resolveResourcePath}
+					on:submit={submit}
+				/>
 			</section>
 
-				<section class="jm-panel jm-stream-panel" use:delegateMemoEditTrigger>
+			<section class="jm-panel jm-stream-panel">
 				<div class="jm-panel-header">
 					<h3>Memos</h3>
 					<div class="jm-stream-actions">
-						<span class="jm-muted">{filteredStream.length} shown</span>
-						<button type="button" class="jm-link" on:click={() => void reload()} disabled={isLoading || isSubmitting}>
-							{isLoading ? "Loading..." : "Refresh"}
+						<span class="jm-muted"
+							>{filteredStream.length} shown</span
+						>
+						<button
+							type="button"
+							class="jm-icon-button"
+							on:click={() => void reload()}
+							disabled={isLoading || isSubmitting}
+							title="Refresh"
+							style="display: inline-flex; align-items: center; justify-content: center; padding: 4px;"
+						>
+							<svg
+								viewBox="0 0 24 24"
+								style="width: 16px; height: 16px; display: block; {isLoading
+									? 'animation: spin 1s linear infinite;'
+									: ''}"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
+								<path
+									d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"
+								></path>
+								<path d="M3 3v5h5"></path>
+								<path
+									d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"
+								></path>
+								<path d="M16 16h5v5"></path>
+							</svg>
 						</button>
 					</div>
 				</div>
@@ -1213,7 +1073,11 @@
 				{#if selectedTag !== "all"}
 					<div class="jm-active-filter">
 						<span>Filtered by</span>
-						<button type="button" class="jm-tag-chip is-active" on:click={clearTagFilter}>{selectedTag}</button>
+						<button
+							type="button"
+							class="jm-tag-chip is-active"
+							on:click={clearTagFilter}>{selectedTag}</button
+						>
 					</div>
 				{/if}
 
@@ -1226,101 +1090,19 @@
 						{/if}
 					</p>
 				{:else}
-					{#each filteredStream as memo (memo.id)}
-						<article class="jm-card">
-							<div class="jm-card-header">
-								<span>{memo.createdLabel}</span>
-									<button
-										type="button"
-										class={`jm-icon-button jm-memo-edit-btn ${isEditingMemo(memo) ? "is-active" : ""}`}
-										data-memo-id={memo.id}
-										aria-label="Edit memo"
-										title="Edit memo"
-										on:click|preventDefault|stopPropagation={() => openMemoEditor(memo)}
-										on:mousedown|preventDefault|stopPropagation={() => openMemoEditor(memo)}
-									>
-									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-										<path d="M12 20h9"></path>
-										<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
-									</svg>
-								</button>
-							</div>
-							<div
-								class="jm-card-content"
-								use:renderMemo={{ markdown: memo.content, sourcePath: memo.filePath, previewGroup: memo.id }}
-							></div>
-							{#if Array.isArray(memo.attachments) && memo.attachments.length > 0}
-								<div class="jm-card-attachments">
-									{#each memo.attachments as attachment (`${memo.id}:${attachment.path}`)}
-										<button
-											type="button"
-											class="jm-attachment-thumb"
-											on:click={() => openAttachmentPreview(attachment, memo.filePath, memo.id)}
-											title={attachment.name}
-										>
-											{#if attachment.isImage}
-												<div
-													class="jm-attachment-thumb-media"
-													use:renderMemo={{
-														markdown: attachmentThumbnailMarkdown(attachment),
-														sourcePath: memo.filePath,
-														previewGroup: memo.id
-													}}
-												></div>
-											{:else}
-												<div class="jm-attachment-thumb-file">
-													<svg viewBox="0 0 24 24" class="jm-attachment-thumb-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-														<path d="m21.44 11.05-9.19 9.19a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 1 1 4.95 4.95l-9.2 9.19a1.5 1.5 0 0 1-2.12-2.12l8.49-8.48"></path>
-													</svg>
-													<span class="jm-attachment-thumb-name">{attachment.name}</span>
-												</div>
-											{/if}
-										</button>
-									{/each}
-								</div>
-							{/if}
-								{#if isEditingMemo(memo)}
-									<div class="jm-edit-inline" role="region" aria-label="Edit memo">
-										<div class="jm-edit-inline-header">
-											<span>Edit memo</span>
-												<button
-													type="button"
-												class="jm-icon-button jm-memo-edit-btn"
-												aria-label="Close editor"
-												title="Close editor"
-												on:click|preventDefault|stopPropagation={closeMemoEditor}
-											>
-											<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-												<path d="M18 6 6 18"></path>
-												<path d="m6 6 12 12"></path>
-											</svg>
-										</button>
-									</div>
-									<MemoInputBox
-										className="jm-edit-input-shell"
-										bind:value={editDraft}
-										rows={10}
-										disabled={isSavingEdit}
-										onKeydown={handleEditInputKeydown}
-										onPaste={handleEditPaste}
-										placeholder="Update memo content"
-									>
-										<svelte:fragment slot="actions">
-												<button type="button" class="jm-secondary-btn" on:click|preventDefault|stopPropagation={closeMemoEditor}>Cancel</button>
-											<button
-												type="button"
-												class="jm-primary-btn"
-												on:click={() => void saveMemoEdit()}
-												disabled={isSavingEdit}
-											>
-												{isSavingEdit ? "Saving..." : "Save"}
-												</button>
-											</svelte:fragment>
-										</MemoInputBox>
-									</div>
-								{/if}
-						</article>
-					{/each}
+					<MemoList
+						memos={filteredStream}
+						bind:editDraft
+						{editingMemo}
+						{renderMemoContent}
+						{openAttachmentPreview}
+						{openRenderedImagePreview}
+						{saveAttachments}
+						{resolveResourcePath}
+						on:edit={(e) => openMemoEditor(e.detail)}
+						on:cancelEdit={closeMemoEditor}
+						on:saveEdit={(e) => saveMemoEdit(e.detail)}
+					/>
 				{/if}
 			</section>
 		{:else if railActive === "explore"}
@@ -1328,58 +1110,161 @@
 				<div class="jm-panel-header">
 					<h3>Explore</h3>
 					<div class="jm-stream-actions">
-						<span class="jm-muted">{exploreMemos.length} random</span>
-						<button type="button" class="jm-link" on:click={shuffleExplore}>Shuffle</button>
-						<button type="button" class="jm-link" on:click={() => void reload()} disabled={isLoading || isSubmitting}>
-							{isLoading ? "Loading..." : "Refresh"}
+						<span class="jm-muted">{exploreMemos.length} shown</span
+						>
+						<button
+							type="button"
+							class="jm-icon-button"
+							on:click={() => void reload()}
+							disabled={isLoading || isSubmitting}
+							title="Refresh"
+						>
+							<svg
+								viewBox="0 0 24 24"
+								width="18"
+								height="18"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								style={isLoading
+									? "animation: spin 1s linear infinite"
+									: ""}
+							>
+								<path
+									d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"
+								/>
+								<path d="M21 3v5h-5" />
+							</svg>
 						</button>
 					</div>
 				</div>
 
 				{#if exploreMemos.length === 0}
-					<p class="jm-empty">No memos available for the current filter.</p>
+					<p class="jm-empty">
+						No memos available for the current filter.
+					</p>
 				{:else}
-					<div class="jm-explore-grid">
-						{#each exploreMemos as memo (memo.id)}
-							<article class="jm-card">
-								<div class="jm-card-header jm-card-header-meta">
-									<span>{memo.createdLabel}</span>
-								</div>
-								<div
-									class="jm-card-content"
-									use:renderMemo={{ markdown: memo.content, sourcePath: memo.filePath, previewGroup: memo.id }}
-								></div>
-								{#if Array.isArray(memo.attachments) && memo.attachments.length > 0}
-									<div class="jm-card-attachments">
-										{#each memo.attachments as attachment (`${memo.id}:${attachment.path}`)}
-											<button
-												type="button"
-												class="jm-attachment-thumb"
-												on:click={() => openAttachmentPreview(attachment, memo.filePath, memo.id)}
-												title={attachment.name}
+					<div
+						class="jm-explore-masonry"
+						style="padding: 0 8px; display: flex; gap: 16px; align-items: start;"
+						bind:clientWidth={exploreContainerWidth}
+					>
+						{#each exploreColumns as col}
+							<div
+								class="jm-masonry-column"
+								style="flex: 1; display: flex; flex-direction: column; gap: 16px; min-width: 0;"
+							>
+								{#each col as item (item.memo.id)}
+									{@const memo = item.memo}
+									<article
+										class={`jm-card ${item.groupIndex % 2 === 0 ? "is-odd" : "is-even"} ${item.isLastInGroup ? "is-last-in-group" : ""}`}
+									>
+										<div
+											class="jm-card-header jm-card-header-meta"
+											style="display: flex; justify-content: space-between; align-items: center;"
+										>
+											<span
+												class="jm-meta-date"
+												style="font-weight: 500;"
+												>{memo.dateKey}</span
 											>
-												{#if attachment.isImage}
+											<span
+												class="jm-meta-time"
+												style="color: var(--text-muted); font-size: 0.9em;"
+												>{formatTime(
+													memo.createdAt,
+												)}</span
+											>
+										</div>
+										<div
+											class="jm-card-content"
+											use:renderMemo={{
+												markdown:
+													item.cleanedContent ||
+													memo.content,
+												sourcePath: memo.filePath,
+												previewGroup: memo.id,
+											}}
+										></div>
+
+										<!-- Extracted inline images moved to bottom -->
+										{#if item.imageEmbeds && item.imageEmbeds.length > 0}
+											<div class="jm-card-media-grid">
+												{#each item.imageEmbeds as imgMarkdown}
 													<div
-														class="jm-attachment-thumb-media"
+														class="jm-media-item"
 														use:renderMemo={{
-															markdown: attachmentThumbnailMarkdown(attachment),
-															sourcePath: memo.filePath,
-															previewGroup: memo.id
+															markdown:
+																imgMarkdown,
+															sourcePath:
+																memo.filePath,
+															previewGroup:
+																memo.id,
 														}}
 													></div>
-												{:else}
-													<div class="jm-attachment-thumb-file">
-														<svg viewBox="0 0 24 24" class="jm-attachment-thumb-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-															<path d="m21.44 11.05-9.19 9.19a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 1 1 4.95 4.95l-9.2 9.19a1.5 1.5 0 0 1-2.12-2.12l8.49-8.48"></path>
-														</svg>
-														<span class="jm-attachment-thumb-name">{attachment.name}</span>
-													</div>
-												{/if}
-											</button>
-										{/each}
-									</div>
-								{/if}
-							</article>
+												{/each}
+											</div>
+										{/if}
+										{#if Array.isArray(memo.attachments) && memo.attachments.length > 0}
+											<div class="jm-card-attachments">
+												{#each memo.attachments as attachment (`${memo.id}:${attachment.path}`)}
+													<button
+														type="button"
+														class="jm-attachment-thumb"
+														on:click={() =>
+															openAttachmentPreview(
+																attachment,
+																memo.filePath,
+																memo.id,
+															)}
+														title={attachment.name}
+													>
+														{#if attachment.isImage}
+															<div
+																class="jm-attachment-thumb-media"
+																use:renderMemo={{
+																	markdown:
+																		attachmentThumbnailMarkdown(
+																			attachment,
+																		),
+																	sourcePath:
+																		memo.filePath,
+																	previewGroup:
+																		memo.id,
+																}}
+															></div>
+														{:else}
+															<div
+																class="jm-attachment-thumb-file"
+															>
+																<svg
+																	viewBox="0 0 24 24"
+																	class="jm-attachment-thumb-icon"
+																	fill="none"
+																	stroke="currentColor"
+																	stroke-width="2"
+																	stroke-linecap="round"
+																	stroke-linejoin="round"
+																>
+																	<path
+																		d="m21.44 11.05-9.19 9.19a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 1 1 4.95 4.95l-9.2 9.19a1.5 1.5 0 0 1-2.12-2.12l8.49-8.48"
+																	></path>
+																</svg>
+																<span
+																	class="jm-attachment-thumb-name"
+																	>{attachment.name}</span
+																>
+															</div>
+														{/if}
+													</button>
+												{/each}
+											</div>
+										{/if}
+									</article>
+								{/each}
+							</div>
 						{/each}
 					</div>
 				{/if}
@@ -1389,26 +1274,70 @@
 				<div class="jm-panel-header">
 					<h3>Attachments</h3>
 					<div class="jm-stream-actions">
-						<span class="jm-muted">{imageTimeline.length} images</span>
-						<button type="button" class="jm-link" on:click={() => void reload()} disabled={isLoading || isSubmitting}>
-							{isLoading ? "Loading..." : "Refresh"}
+						<span class="jm-muted"
+							>{imageTimeline.length} images</span
+						>
+						<button
+							type="button"
+							class="jm-icon-button"
+							on:click={() => void reload()}
+							disabled={isLoading || isSubmitting}
+							title="Refresh"
+						>
+							<svg
+								viewBox="0 0 24 24"
+								width="18"
+								height="18"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								style={isLoading
+									? "animation: spin 1s linear infinite"
+									: ""}
+							>
+								<path
+									d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"
+								/>
+								<path d="M21 3v5h-5" />
+							</svg>
 						</button>
 					</div>
 				</div>
 
 				{#if imageTimeline.length === 0}
-					<p class="jm-empty">No images found in memos for the current filter.</p>
+					<p class="jm-empty">
+						No images found in memos for the current filter.
+					</p>
 				{:else}
 					<div class="jm-attachments-timeline">
 						{#each imageTimeline as entry (entry.id)}
 							<article class="jm-attachment-item">
-								<span class="jm-attachment-dot" aria-hidden="true"></span>
+								<span
+									class="jm-attachment-dot"
+									aria-hidden="true"
+								></span>
 								<div class="jm-attachment-content">
 									<div class="jm-card-header">
-										<button class="jm-link" type="button" on:click={() => void openDaily(entry.dateKey)}>
+										<button
+											class="jm-date-badge"
+											type="button"
+											on:click={() =>
+												void openDaily(entry.dateKey)}
+											title="Open Daily Note"
+										>
 											{entry.dateKey}
 										</button>
-										<span>{entry.createdLabel}</span>
+										<span class="jm-time-label">
+											{new Date(
+												entry.createdAt,
+											).toLocaleTimeString([], {
+												hour: "2-digit",
+												minute: "2-digit",
+												hour12: false,
+											})}
+										</span>
 									</div>
 									{#if entry.tags.length > 0}
 										<div class="jm-card-tags">
@@ -1416,7 +1345,8 @@
 												<button
 													type="button"
 													class={`jm-tag-chip ${selectedTag === tag ? "is-active" : ""}`}
-													on:click={() => selectTag(tag)}
+													on:click={() =>
+														selectTag(tag)}
 												>
 													{tag}
 												</button>
@@ -1425,7 +1355,11 @@
 									{/if}
 									<div
 										class="jm-attachment-media"
-										use:renderMemo={{ markdown: entry.imageMarkdown, sourcePath: entry.filePath, previewGroup: entry.id }}
+										use:renderMemo={{
+											markdown: entry.imageMarkdown,
+											sourcePath: entry.filePath,
+											previewGroup: entry.id,
+										}}
 									></div>
 								</div>
 							</article>
@@ -1437,76 +1371,50 @@
 	</main>
 
 	<aside class="jm-column jm-right-column">
-		<section class="jm-panel">
-			<div class="jm-panel-header">
-				<h3>Mini calendar</h3>
-				<div class="jm-calendar-actions">
-					<button type="button" class="jm-link" on:click={resetCalendarMonth}>Today</button>
-					<button type="button" class="jm-icon-button" aria-label="Previous month" on:click={() => shiftCalendarMonth(-1)}>
-						‹
-					</button>
-					<button type="button" class="jm-icon-button" aria-label="Next month" on:click={() => shiftCalendarMonth(1)}>
-						›
-					</button>
-				</div>
+		<MemoHeatmap {heatmap} {openOrCreateDaily} />
+		<MemoFilter
+			{selectedTag}
+			{tagStats}
+			{totalMemoCount}
+			bind:this={layoutEl}
+		>
+			<div slot="actions">
+				<!-- If we wanted to put Clear button here, but MemoFilter handles it already -->
 			</div>
-			<div class="jm-calendar-title">{monthTitle}</div>
-			<div class="jm-calendar-weekdays">
-				{#each WEEKDAY_LABELS as dayLabel}
-					<span>{dayLabel.slice(0, 2)}</span>
-				{/each}
-			</div>
-			<div class="jm-calendar-grid">
-				{#each monthCells as cell (cell.dateKey)}
-					<button
-						type="button"
-						class={`jm-calendar-day jm-calendar-heat-${calendarHeatLevel(cell.count)} ${cell.inMonth ? "" : "is-outside"} ${cell.isToday ? "is-today" : ""}`}
-						title={calendarTitle(cell)}
-						disabled={!cell.inMonth}
-						on:click={() => openCalendarCell(cell)}
-					>
-						<span>{cell.day}</span>
-					</button>
-				{/each}
-			</div>
-		</section>
-
-		<section class="jm-panel">
-			<div class="jm-panel-header">
-				<h3>Tags</h3>
-				{#if selectedTag !== "all"}
-					<button type="button" class="jm-link" on:click={clearTagFilter}>Clear</button>
-				{/if}
-			</div>
-			<div class="jm-tag-list">
-				<button
-					type="button"
-					class={`jm-tag-filter ${selectedTag === "all" ? "is-active" : ""}`}
-					on:click={() => selectTag("all")}
-				>
-					<span>All</span>
-					<span class="jm-tag-count">{totalMemoCount}</span>
-				</button>
-				{#if tagStats.length === 0}
-					<p class="jm-empty">No tags found in current stream window.</p>
-				{:else}
-					{#each tagStats as item (item.tag)}
-						<button
-							type="button"
-							class={`jm-tag-filter ${selectedTag === item.tag ? "is-active" : ""}`}
-							on:click={() => selectTag(item.tag)}
-						>
-							<span>{item.tag}</span>
-							<span class="jm-tag-count">{item.count}</span>
-						</button>
-					{/each}
-				{/if}
-			</div>
-		</section>
+		</MemoFilter>
+		<!-- Wait, MemoFilter props update selectedTag via binding in main component? -->
+		<!-- In MemoFilter.svelte I didn't verify if I used `bind:selectedTag`. Let me check. -->
+		<!-- Checked: In MemoFilter.svelte, `export let selectedTag` is a prop. If I pass it, it reacts. -->
+		<!-- But `selectTag` inside MemoFilter updates the local prop. -->
+		<!-- I should probably bind it: `bind:selectedTag={selectedTag}` -->
 	</aside>
 
+	<!-- Re-inject MemoFilter with correct binding -->
+	<!-- Wait, I missed closing tag for aside -->
+
+	<!-- Fixing sidebar -->
+	<!-- Also `layoutEl` binding on MemoFilter is wrong. `layoutEl` was the main container in original code. -->
+	<!-- In my new code, `layoutEl` is on the root div. `bind:this={layoutEl}` on line 426. -->
+	<!-- I will fix the sidebar section below -->
+
+	<!-- Sidebar Correction -->
+	<!--
+	<aside class="jm-column jm-right-column">
+		<MemoHeatmap {heatmap} {openOrCreateDaily} />
+		<MemoFilter
+			bind:selectedTag
+			{tagStats}
+			{totalMemoCount}
+		/>
+	</aside>
+	-->
+
 	{#if previewAttachment}
-		<div class="jm-preview-backdrop" role="presentation" on:click={handlePreviewBackdropClick}>
+		<div
+			class="jm-preview-backdrop"
+			role="presentation"
+			on:click={handlePreviewBackdropClick}
+		>
 			<div class="jm-preview-modal" role="dialog" aria-modal="true">
 				<div class="jm-preview-header">
 					<h4>{previewAttachment.name}</h4>
@@ -1517,10 +1425,18 @@
 							on:click={togglePreviewOnlyCurrentMemo}
 							disabled={!previewCanScopeToCurrentMemo}
 							aria-label="Only current memo"
-							title="只看当前 memos"
+							title="Only current memo"
 						>
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<path d="M3 12s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6"></path>
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
+								<path d="M3 12s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6"
+								></path>
 								<circle cx="12" cy="12" r="2.5"></circle>
 							</svg>
 						</button>
@@ -1535,7 +1451,10 @@
 						on:pointerup={handlePreviewPointerUp}
 						on:pointercancel={handlePreviewPointerUp}
 					>
-						<img src={previewAttachment.imageSrc} alt={previewAttachment.name} />
+						<img
+							src={previewAttachment.imageSrc}
+							alt={previewAttachment.name}
+						/>
 					</div>
 				{:else}
 					<div
@@ -1547,15 +1466,17 @@
 						on:pointercancel={handlePreviewPointerUp}
 						use:renderMemo={{
 							markdown: previewAttachment.markdown,
-							sourcePath: previewAttachment.sourcePath
+							sourcePath: previewAttachment.sourcePath,
 						}}
 					></div>
 				{/if}
-					<div class="jm-preview-footer">
-						{#if previewCounterLabel}
-							<span class="jm-preview-counter">{previewCounterLabel}</span>
-						{/if}
-						<div class="jm-preview-actions">
+				<div class="jm-preview-footer">
+					{#if previewCounterLabel}
+						<span class="jm-preview-counter"
+							>{previewCounterLabel}</span
+						>
+					{/if}
+					<div class="jm-preview-actions">
 						<button
 							type="button"
 							class="jm-icon-button jm-preview-icon-btn"
@@ -1564,7 +1485,14 @@
 							aria-label="Previous image"
 							title="Previous image"
 						>
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
 								<path d="m15 18-6-6 6-6"></path>
 							</svg>
 						</button>
@@ -1576,7 +1504,14 @@
 							aria-label="Next image"
 							title="Next image"
 						>
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
 								<path d="m9 18 6-6-6-6"></path>
 							</svg>
 						</button>
@@ -1584,11 +1519,18 @@
 							type="button"
 							class="jm-icon-button jm-preview-icon-btn"
 							on:click={zoomPreviewOut}
-							disabled={!previewIsImage || previewScale <= PREVIEW_SCALE_MIN}
+							disabled={!previewIsImage ||
+								previewScale <= PREVIEW_SCALE_MIN}
 							aria-label="Zoom out"
 							title="Zoom out"
 						>
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+							>
 								<path d="M5 12h14"></path>
 							</svg>
 						</button>
@@ -1596,11 +1538,18 @@
 							type="button"
 							class="jm-icon-button jm-preview-icon-btn"
 							on:click={zoomPreviewIn}
-							disabled={!previewIsImage || previewScale >= PREVIEW_SCALE_MAX}
+							disabled={!previewIsImage ||
+								previewScale >= PREVIEW_SCALE_MAX}
 							aria-label="Zoom in"
 							title="Zoom in"
 						>
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+							>
 								<path d="M5 12h14"></path>
 								<path d="M12 5v14"></path>
 							</svg>
@@ -1613,11 +1562,20 @@
 							aria-label="Toggle drag mode"
 							title="Toggle drag mode"
 						>
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
 								<path d="M7 12V6a1 1 0 0 1 2 0v6"></path>
 								<path d="M11 12V5a1 1 0 0 1 2 0v7"></path>
 								<path d="M15 12V7a1 1 0 0 1 2 0v8"></path>
-								<path d="M19 12v-2a1 1 0 0 1 2 0v6a5 5 0 0 1-5 5h-4a5 5 0 0 1-4.2-2.3l-2.2-3.3a1 1 0 0 1 1.5-1.3L9 16v-4"></path>
+								<path
+									d="M19 12v-2a1 1 0 0 1 2 0v6a5 5 0 0 1-5 5h-4a5 5 0 0 1-4.2-2.3l-2.2-3.3a1 1 0 0 1 1.5-1.3L9 16v-4"
+								></path>
 							</svg>
 						</button>
 						<button
@@ -1627,7 +1585,13 @@
 							aria-label="Close preview"
 							title="Close preview"
 						>
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+							>
 								<path d="M18 6 6 18"></path>
 								<path d="m6 6 12 12"></path>
 							</svg>

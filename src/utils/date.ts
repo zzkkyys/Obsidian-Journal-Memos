@@ -8,7 +8,8 @@ export function formatDateKey(date: Date): string {
 export function formatTime(date: Date): string {
 	const hour = String(date.getHours()).padStart(2, "0");
 	const minute = String(date.getMinutes()).padStart(2, "0");
-	return `${hour}:${minute}`;
+	const second = String(date.getSeconds()).padStart(2, "0");
+	return `${hour}:${minute}:${second}`;
 }
 
 export function formatCreatedLabel(date: Date): string {
