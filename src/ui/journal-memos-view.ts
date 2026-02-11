@@ -1,6 +1,7 @@
 import { ItemView, MarkdownRenderer, Notice, WorkspaceLeaf } from "obsidian";
 import type JournalMemosPlugin from "../main";
 import type { MemoSnapshot } from "../types";
+import { hexAlphaToRgba } from "../settings";
 import { DuplicateFileModal } from "./DuplicateFileModal";
 import JournalMemosApp from "./JournalMemosApp.svelte";
 
@@ -52,6 +53,8 @@ export class JournalMemosView extends ItemView {
 			heatmap: snapshot.heatmap,
 			memoImageMaxWidth: this.plugin.settings.memoImageMaxWidth,
 			exploreColumnLimit: this.plugin.settings.exploreColumnLimit,
+			dayGroupColorA: hexAlphaToRgba(this.plugin.settings.dayGroupColorA, this.plugin.settings.dayGroupAlphaA),
+			dayGroupColorB: hexAlphaToRgba(this.plugin.settings.dayGroupColorB, this.plugin.settings.dayGroupAlphaB),
 		});
 	}
 
@@ -69,6 +72,8 @@ export class JournalMemosView extends ItemView {
 			heatmap: snapshot.heatmap,
 			memoImageMaxWidth: this.plugin.settings.memoImageMaxWidth,
 			exploreColumnLimit: this.plugin.settings.exploreColumnLimit,
+			dayGroupColorA: hexAlphaToRgba(this.plugin.settings.dayGroupColorA, this.plugin.settings.dayGroupAlphaA),
+			dayGroupColorB: hexAlphaToRgba(this.plugin.settings.dayGroupColorB, this.plugin.settings.dayGroupAlphaB),
 			refreshData: () => this.plugin.memoService.getSnapshot(),
 			publishMemo: async (content: string) => {
 				await this.plugin.memoService.appendMemo(content);

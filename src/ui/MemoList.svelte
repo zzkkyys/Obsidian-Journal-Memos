@@ -10,6 +10,8 @@
 	export let saveAttachments; // (files) => Promise<Attachment[]>
 	export let editDraft = ""; // Prop from parent
 	export let resolveResourcePath; // (path) => string
+	export let dayGroupColorA = ""; // Background color A for alternating groups
+	export let dayGroupColorB = ""; // Background color B for alternating groups
 
 	const dispatch = createEventDispatcher();
 
@@ -26,7 +28,7 @@
 		dispatch("saveEdit");
 	}
 
-	// Group memos by date
+	// Group memos by date, and assign alternating bg index only to multi-memo groups
 	let memoGroups = [];
 	$: {
 		const groups = new Map();
@@ -38,22 +40,40 @@
 			groups.get(date).push(memo);
 		}
 
-		memoGroups = Array.from(groups.entries()).map(([date, items]) => ({
-			date,
-			items,
-		}));
+		let bgIndex = 0;
+		memoGroups = Array.from(groups.entries()).map(([date, items]) => {
+			const hasGroupBg = items.length >= 2;
+			const result = {
+				date,
+				items,
+				hasGroupBg,
+				bgIndex: hasGroupBg ? bgIndex : -1,
+			};
+			if (hasGroupBg) bgIndex++;
+			return result;
+		});
 	}
 
-	function formatDateHeader(dateKey) {
-		// Basic format, can be improved to "Today", "Yesterday", etc.
-		if (!dateKey) return "Unknown Date";
-		return dateKey;
+	function groupStyle(group) {
+		if (!group.hasGroupBg) return "";
+		const color = group.bgIndex % 2 === 0 ? dayGroupColorA : dayGroupColorB;
+		if (color) {
+			return `background: ${color};`;
+		}
+		return "";
 	}
 </script>
 
 <div class="memo-list-container">
 	{#each memoGroups as group (group.date)}
-		<div class="memo-group">
+		<div
+			class="memo-group {group.hasGroupBg
+				? group.bgIndex % 2 === 0
+					? 'has-group-bg group-bg-a'
+					: 'has-group-bg group-bg-b'
+				: ''}"
+			style={groupStyle(group)}
+		>
 			<div class="memo-group-items">
 				{#each group.items as memo (memo.id)}
 					<MemoItem
@@ -76,41 +96,5 @@
 </div>
 
 <style>
-	.memo-list-container {
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
-	}
-
-	.memo-group {
-		/* Remove group background for separated card look */
-		background-color: transparent !important;
-		border-radius: 0;
-		padding: 0;
-		position: relative;
-	}
-
-	/* Remove accent bar */
-	.memo-group::before {
-		display: none;
-	}
-
-	.memo-group-items {
-		display: flex;
-		flex-direction: column;
-		gap: 16px !important; /* Space between memos */
-	}
-
-	/* Restore individual card styles */
-	:global(.memo-group-items .jm-card) {
-		background-color: var(--background-secondary) !important;
-		border: 1px solid var(--background-modifier-border) !important; /* Visible border */
-		border-radius: 8px !important;
-		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
-	}
-
-	:global(.theme-dark .memo-group-items .jm-card) {
-		background-color: var(--background-secondary);
-		border: 1px solid var(--background-modifier-border);
-	}
+	/* All styling moved to global styles.css for Obsidian compatibility */
 </style>

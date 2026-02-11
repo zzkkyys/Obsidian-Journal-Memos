@@ -956,38 +956,50 @@
 	}
 }
 
-/* Stream View: Separated Cards Style */
+/* Stream View: Day-Grouped Cards Style */
 
-/* Remove group background since we want separate cards */
+/* Container for all day groups */
+.memo-list-container {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+
+/* Day group base */
 .memo-group {
-	background: transparent !important;
-	border: none !important;
-	padding: 0 !important;
-	margin: 0 !important;
+	position: relative;
 }
 
-.memo-group:nth-child(odd),
-.memo-group:nth-child(even),
-.theme-dark .memo-group:nth-child(odd),
-.theme-dark .memo-group:nth-child(even) {
-	background-color: transparent !important;
-	border: none !important;
+/* Background wrapper for groups with 2+ memos */
+.memo-group.has-group-bg {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 14px;
+	padding: 10px;
 }
 
-/* Style individual cards */
+/* Alternating default background colors */
+.memo-group.group-bg-a {
+	background: color-mix(in srgb, var(--background-modifier-border) 55%, var(--background-primary-alt));
+}
+
+.memo-group.group-bg-b {
+	background: color-mix(in srgb, var(--background-modifier-border) 40%, var(--background-primary-alt));
+}
+
+/* Items inside the group */
+.memo-group-items {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+/* Style individual cards within the day group */
 .memo-group .jm-card {
 	background-color: var(--background-secondary) !important;
 	border: 1px solid var(--background-modifier-border) !important;
 	border-radius: 8px !important;
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
-	margin-bottom: 16px !important;
-	/* Space between memos */
 	padding: 12px 16px !important;
-}
-
-/* Remove redundant separator logic since we have full borders */
-.memo-group .jm-card:not(:last-child) {
-	border-bottom: 1px solid var(--background-modifier-border) !important;
 }
 
 /* Explore View: Waterfall Layout (Masonry) */
@@ -1079,4 +1091,43 @@
 
 .jm-ribbon-icon-colorful svg polyline {
 	stroke: #FFFFFF !important;
+}
+
+/* ── Settings Tab Bar ── */
+
+.jm-settings-tab-bar {
+	display: flex;
+	gap: 4px;
+	padding: 4px;
+	margin-bottom: 16px;
+	background: var(--background-secondary);
+	border-radius: 8px;
+}
+
+.jm-settings-tab-btn {
+	flex: 1;
+	padding: 8px 12px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-muted);
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.jm-settings-tab-btn:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.jm-settings-tab-btn.is-active {
+	color: var(--text-on-accent);
+	background: var(--interactive-accent);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.jm-settings-content {
+	padding-top: 4px;
 }

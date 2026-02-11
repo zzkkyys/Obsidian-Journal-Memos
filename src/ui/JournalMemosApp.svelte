@@ -20,6 +20,8 @@
 	export let renderMemoContent;
 	export let memoImageMaxWidth = 640;
 	export let exploreColumnLimit = 0;
+	export let dayGroupColorA = "";
+	export let dayGroupColorB = "";
 	export let notice; // (message: string, timeout?: number) => void
 	export let resolveResourcePath; // (path: string) => string
 
@@ -1099,6 +1101,8 @@
 						{openRenderedImagePreview}
 						{saveAttachments}
 						{resolveResourcePath}
+						{dayGroupColorA}
+						{dayGroupColorB}
 						on:edit={(e) => openMemoEditor(e.detail)}
 						on:cancelEdit={closeMemoEditor}
 						on:saveEdit={(e) => saveMemoEdit(e.detail)}
