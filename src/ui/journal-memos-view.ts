@@ -81,6 +81,9 @@ export class JournalMemosView extends ItemView {
 			updateMemo: async (memo: { id: string; filePath: string; createdLabel: string; content: string; attachments: Array<{ path: string; name: string; isImage: boolean }> }, content: string) => {
 				await this.plugin.memoService.updateMemo(memo, content);
 			},
+			deleteMemo: async (memo: { id: string; filePath: string; createdLabel: string; content: string; attachments: Array<{ path: string; name: string; isImage: boolean }> }) => {
+				await this.plugin.memoService.deleteMemo(memo);
+			},
 			saveAttachments: async (
 				attachments: Array<{ name: string; mimeType: string; data: ArrayBuffer }>,
 			) => this.plugin.memoService.saveAttachments(attachments, async (name, existingPath, matchType) => {

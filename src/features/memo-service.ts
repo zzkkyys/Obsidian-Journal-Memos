@@ -1,6 +1,7 @@
 import { App, Notice, TFile, TFolder, normalizePath } from "obsidian";
 import {
 	appendMemoBlock,
+	deleteMemoBlock,
 	ensureDailyNoteFile,
 	getDailyFileByDate,
 	getIndexedDailyPaths,
@@ -88,6 +89,18 @@ export class MemoService {
 		}
 
 		await updateMemoBlock(this.app, abstractFile, memo, content);
+		this.invalidate(abstractFile.path);
+	}
+
+	async deleteMemo(
+		memo: Pick<MemoItem, "id" | "filePath" | "createdLabel" | "content" | "attachments">,
+	): Promise<void> {
+		const abstractFile = this.app.vault.getAbstractFileByPath(memo.filePath);
+		if (!(abstractFile instanceof TFile)) {
+			throw new Error(`Daily note not found: ${memo.filePath}`);
+		}
+
+		await deleteMemoBlock(this.app, abstractFile, memo);
 		this.invalidate(abstractFile.path);
 	}
 

@@ -54,6 +54,13 @@
 	min-width: 0;
 }
 
+.jm-right-column {
+	position: sticky;
+	top: 12px;
+	max-height: calc(100vh - 24px);
+	overflow-y: auto;
+}
+
 .jm-panel {
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 10px;
@@ -312,6 +319,13 @@
 	color: var(--text-muted);
 }
 
+.jm-card-actions {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	margin-left: auto;
+}
+
 .jm-card-header-meta {
 	justify-content: flex-end;
 }
@@ -335,6 +349,22 @@
 .jm-memo-edit-btn.is-active {
 	border-color: var(--interactive-accent);
 	background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+}
+
+.jm-memo-delete-btn {
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 0;
+}
+
+.jm-memo-delete-btn svg {
+	width: 14px;
+	height: 14px;
+	display: block;
 }
 
 .jm-card-tags {
@@ -817,10 +847,14 @@
 }
 
 .jm-tag-count {
-	font-size: 10px;
-	padding: 0 5px;
+	font-size: 9px;
+	padding: 0 4px;
 	border-radius: 999px;
 	background: var(--background-modifier-border);
+	color: var(--text-muted);
+	line-height: 16px;
+	min-width: 16px;
+	text-align: center;
 }
 
 .jm-empty {
@@ -834,6 +868,96 @@
 	color: var(--text-error);
 	font-size: 12px;
 }
+
+/* ── Tag Tree View ── */
+
+.jm-tag-tree-wrapper {
+	max-height: 400px;
+	overflow-y: auto;
+	font-size: 13px;
+	padding-right: 4px;
+}
+
+.jm-tag-tree-item {
+	display: flex;
+	flex-direction: column;
+}
+
+.jm-tag-tree-row {
+	display: flex;
+	align-items: center;
+	padding: 4px 6px 4px 2px;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background-color 0.1s ease;
+	gap: 4px;
+	color: var(--text-muted);
+}
+
+.jm-tag-tree-row:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.jm-tag-tree-row.is-active {
+	background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+	color: var(--text-normal);
+}
+
+.jm-tree-expander {
+	width: 20px;
+	height: 20px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: transparent;
+	border: none;
+	padding: 0;
+	color: var(--text-muted);
+	cursor: pointer;
+	border-radius: 4px;
+}
+
+.jm-tree-expander:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.jm-tree-expander.is-hidden {
+	visibility: hidden;
+	pointer-events: none;
+}
+
+.jm-tree-expander svg {
+	width: 14px;
+	height: 14px;
+	transition: transform 0.2s ease;
+}
+
+.jm-tree-expander.is-expanded svg {
+	transform: rotate(90deg);
+}
+
+.jm-tree-label {
+	flex: 1;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.jm-tree-children {
+	display: flex;
+	flex-direction: column;
+	padding-left: 10px;
+	margin-left: 10px;
+	border-left: 1px solid var(--background-modifier-border);
+}
+
+.jm-tag-tree-all .jm-tree-label {
+	padding-left: 24px;
+	/* Align with text in items with expander */
+}
+
 
 .jm-inline-memo {
 	border: 1px solid var(--background-modifier-border);
@@ -965,6 +1089,38 @@
 	gap: 20px;
 }
 
+/* ── Virtual Scroll Sentinel ── */
+
+.jm-virtual-sentinel {
+	display: flex;
+	justify-content: center;
+	padding: 12px 0;
+}
+
+.jm-load-more-hint {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.jm-load-more-spinner {
+	width: 14px;
+	height: 14px;
+	border: 2px solid var(--background-modifier-border);
+	border-top-color: var(--text-muted);
+	border-radius: 50%;
+	animation: jm-spin 0.8s linear infinite;
+}
+
+@keyframes jm-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+
 /* Day group base */
 .memo-group {
 	position: relative;
@@ -972,6 +1128,7 @@
 
 /* Background wrapper for groups with 2+ memos */
 .memo-group.has-group-bg {
+	position: relative;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 14px;
 	padding: 10px;
@@ -984,6 +1141,29 @@
 
 .memo-group.group-bg-b {
 	background: color-mix(in srgb, var(--background-modifier-border) 40%, var(--background-primary-alt));
+}
+
+/* Floating date badge */
+.memo-group-date-badge {
+	position: absolute;
+	top: 6px;
+	right: 10px;
+	z-index: 1;
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--text-muted);
+	opacity: 0.7;
+	pointer-events: none;
+	line-height: 1;
+}
+
+/* Dark mode: softer group backgrounds */
+.theme-dark .memo-group.group-bg-a {
+	background: color-mix(in srgb, var(--background-modifier-border) 40%, var(--background-primary-alt));
+}
+
+.theme-dark .memo-group.group-bg-b {
+	background: color-mix(in srgb, var(--background-modifier-border) 25%, var(--background-primary-alt));
 }
 
 /* Items inside the group */
@@ -1130,4 +1310,128 @@
 
 .jm-settings-content {
 	padding-top: 4px;
+}
+
+/* ── Search Bar ── */
+
+.jm-search-bar {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 10px;
+	background: var(--background-primary-alt);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	margin-bottom: 8px;
+}
+
+.jm-search-icon {
+	width: 16px;
+	height: 16px;
+	flex-shrink: 0;
+	color: var(--text-muted);
+}
+
+.jm-search-input {
+	flex: 1;
+	border: none;
+	background: transparent;
+	color: var(--text-normal);
+	font-size: 13px;
+	padding: 4px 0;
+	outline: none;
+}
+
+.jm-search-input::placeholder {
+	color: var(--text-faint);
+}
+
+.jm-search-clear {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 2px;
+	border-radius: 4px;
+}
+
+.jm-search-clear:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+/* ── Memo Edit & Delete Buttons ── */
+
+.jm-card-actions .jm-memo-edit-btn,
+.jm-card-actions .jm-memo-delete-btn {
+	opacity: 0;
+	transition: opacity 0.15s ease;
+}
+
+.jm-card:hover .jm-card-actions .jm-memo-edit-btn,
+.jm-card:hover .jm-card-actions .jm-memo-delete-btn {
+	opacity: 1;
+}
+
+.jm-memo-delete-btn:hover {
+	color: var(--text-error) !important;
+}
+
+/* ── Search Highlight ── */
+
+mark.jm-search-highlight {
+	background: rgba(255, 196, 0, 0.35);
+	color: inherit;
+	padding: 1px 2px;
+	border-radius: 3px;
+}
+
+/* ── Delete Confirmation ── */
+
+.jm-confirm-delete {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	margin: 0 0 4px 0;
+	background: color-mix(in srgb, var(--text-error) 10%, var(--background-primary));
+	border: 1px solid color-mix(in srgb, var(--text-error) 30%, transparent);
+	border-radius: 6px;
+	font-size: 12px;
+	color: var(--text-normal);
+}
+
+.jm-confirm-delete span {
+	flex: 1;
+}
+
+.jm-confirm-btn {
+	border: none;
+	border-radius: 4px;
+	padding: 3px 10px;
+	font-size: 12px;
+	cursor: pointer;
+	font-weight: 500;
+}
+
+.jm-confirm-yes {
+	background: var(--text-error);
+	color: white;
+}
+
+.jm-confirm-yes:hover {
+	filter: brightness(1.1);
+}
+
+.jm-confirm-no {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.jm-confirm-no:hover {
+	background: var(--background-modifier-border);
 }

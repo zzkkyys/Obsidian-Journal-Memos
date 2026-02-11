@@ -319,3 +319,60 @@ export async function updateMemoBlock(
 		return `${existingText.slice(0, selectedStart)}${nextBlock}${existingText.slice(selectedEnd)}`;
 	});
 }
+
+export async function deleteMemoBlock(
+	app: App,
+	file: TFile,
+	targetMemo: Pick<MemoItem, "id" | "createdLabel" | "content" | "attachments">,
+): Promise<void> {
+	await app.vault.process(file, (existingText) => {
+		const expectedOffset = parseMemoOffsetFromId(targetMemo.id, file.path);
+		const normalizedExistingContent = normalizeMemoText(targetMemo.content);
+
+		MEMO_BLOCK_REGEX.lastIndex = 0;
+		let match: RegExpExecArray | null;
+		let selectedStart = -1;
+		let selectedEnd = -1;
+
+		while ((match = MEMO_BLOCK_REGEX.exec(existingText)) !== null) {
+			const rawMemoBody = match[1] ?? "";
+			if (expectedOffset !== null && match.index === expectedOffset) {
+				selectedStart = match.index;
+				selectedEnd = match.index + match[0].length;
+				break;
+			}
+
+			const parsed = parseMemoBlockBody(rawMemoBody);
+			if (!parsed) {
+				continue;
+			}
+
+			if (parsed.createdLabel !== targetMemo.createdLabel) {
+				continue;
+			}
+
+			if (normalizeMemoText(parsed.content) !== normalizedExistingContent) {
+				continue;
+			}
+
+			if (!isSameAttachmentList(parsed.attachments, targetMemo.attachments)) {
+				continue;
+			}
+
+			selectedStart = match.index;
+			selectedEnd = match.index + match[0].length;
+			break;
+		}
+
+		if (selectedStart < 0 || selectedEnd < 0) {
+			throw new Error("Could not locate the target memo block to delete.");
+		}
+
+		// Remove the memo block and clean up surrounding blank lines
+		const before = existingText.slice(0, selectedStart).replace(/\n+$/, "\n");
+		const after = existingText.slice(selectedEnd).replace(/^\n+/, "\n");
+
+		const result = (before + after).trim();
+		return result ? result + "\n" : "";
+	});
+}

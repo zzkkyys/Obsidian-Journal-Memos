@@ -13,6 +13,7 @@
 	export let refreshData;
 	export let publishMemo;
 	export let updateMemo;
+	export let deleteMemo;
 	export let saveAttachments;
 	export let openDaily;
 	export let openOrCreateDaily;
@@ -49,6 +50,7 @@
 	let isLoading = false;
 	let errorMessage = "";
 	let selectedTag = "all";
+	let searchQuery = "";
 	let railActive = "memos";
 	let exploreShuffleSeed = Date.now();
 	let layoutEl;
@@ -88,14 +90,25 @@
 			? `${previewIndex + 1} / ${previewGallery.length}`
 			: "";
 	$: previewTransformStyle = `--jm-preview-scale: ${previewScale}; --jm-preview-offset-x: ${previewOffsetX}px; --jm-preview-offset-y: ${previewOffsetY}px;`;
-	$: filteredStream =
-		selectedTag === "all"
-			? stream
-			: stream.filter(
-					(memo) =>
-						Array.isArray(memo.tags) &&
-						memo.tags.includes(selectedTag),
-				);
+	$: filteredStream = (() => {
+		let result = stream;
+		if (selectedTag !== "all") {
+			result = result.filter(
+				(memo) =>
+					Array.isArray(memo.tags) && memo.tags.includes(selectedTag),
+			);
+		}
+		if (searchQuery.trim()) {
+			const q = searchQuery.trim().toLowerCase();
+			result = result.filter(
+				(memo) =>
+					(memo.content && memo.content.toLowerCase().includes(q)) ||
+					(memo.createdLabel &&
+						memo.createdLabel.toLowerCase().includes(q)),
+			);
+		}
+		return result;
+	})();
 	$: exploreMemos = buildExploreMemos(
 		filteredStream,
 		exploreShuffleSeed,
@@ -1072,6 +1085,49 @@
 					</div>
 				</div>
 
+				<!-- Search bar -->
+				<div class="jm-search-bar">
+					<svg
+						viewBox="0 0 24 24"
+						class="jm-search-icon"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<circle cx="11" cy="11" r="8"></circle>
+						<path d="m21 21-4.35-4.35"></path>
+					</svg>
+					<input
+						type="text"
+						class="jm-search-input"
+						placeholder="Search memos…"
+						bind:value={searchQuery}
+					/>
+					{#if searchQuery}
+						<button
+							type="button"
+							class="jm-search-clear"
+							on:click={() => (searchQuery = "")}
+							title="Clear search"
+						>
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								style="width:14px;height:14px"
+							>
+								<path d="M18 6 6 18"></path><path d="m6 6 12 12"
+								></path>
+							</svg>
+						</button>
+					{/if}
+				</div>
+
 				{#if selectedTag !== "all"}
 					<div class="jm-active-filter">
 						<span>Filtered by</span>
@@ -1087,6 +1143,8 @@
 					<p class="jm-empty">
 						{#if totalMemoCount === 0}
 							No memos found in the configured date range.
+						{:else if searchQuery.trim()}
+							No memos match the search query.
 						{:else}
 							No memos match the current tag filter.
 						{/if}
@@ -1103,9 +1161,23 @@
 						{resolveResourcePath}
 						{dayGroupColorA}
 						{dayGroupColorB}
+						{searchQuery}
 						on:edit={(e) => openMemoEditor(e.detail)}
 						on:cancelEdit={closeMemoEditor}
 						on:saveEdit={(e) => saveMemoEdit(e.detail)}
+						on:delete={async (e) => {
+							const memo = e.detail;
+							try {
+								await deleteMemo(memo);
+								notice?.("Memo deleted");
+								await reload();
+							} catch (err) {
+								errorMessage =
+									err instanceof Error
+										? err.message
+										: "Failed to delete memo.";
+							}
+						}}
 					/>
 				{/if}
 			</section>
@@ -1376,16 +1448,7 @@
 
 	<aside class="jm-column jm-right-column">
 		<MemoHeatmap {heatmap} {openOrCreateDaily} />
-		<MemoFilter
-			{selectedTag}
-			{tagStats}
-			{totalMemoCount}
-			bind:this={layoutEl}
-		>
-			<div slot="actions">
-				<!-- If we wanted to put Clear button here, but MemoFilter handles it already -->
-			</div>
-		</MemoFilter>
+		<MemoFilter bind:selectedTag {tagStats} {totalMemoCount} />
 		<!-- Wait, MemoFilter props update selectedTag via binding in main component? -->
 		<!-- In MemoFilter.svelte I didn't verify if I used `bind:selectedTag`. Let me check. -->
 		<!-- Checked: In MemoFilter.svelte, `export let selectedTag` is a prop. If I pass it, it reacts. -->

@@ -59,5 +59,14 @@ npm run build
 
 ## 更新日志
 
+- 0.1.2:
+  - 代码重构
+  - 添加搜索功能：支持按 memo 内容和时间标签实时过滤（大小写不敏感）
+  - 添加删除功能：支持删除单个 memo
+  - memos组右上角添加日期标签
+  - 渐进加载 memos 组，初始渲染 15 个日期组（INITIAL_GROUPS = 15），而不是一次性渲染所有 memos 组，
+  - 滚动时，左侧导航栏、右侧日历+标签面板都会固定不动，只有中间的 memo 流会滚动了]
+  - 更新标签栏，现在可以按列表排列。
+
 - 0.1.1:
   - add feat: Add customizable alternating background colors for memo day groups and refactor settings into a tabbed interface.
