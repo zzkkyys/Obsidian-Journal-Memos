@@ -56,10 +56,8 @@ npm run build
 - `src/features/`: Core business logic (Service layer).
 - `src/data/`: Data parsing and persistence (Daily Note integration).
 
-## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## 更新日志
 
-## 📄 License
-
-MIT
+- 0.1.1:
+  - add feat: Add customizable alternating background colors for memo day groups and refactor settings into a tabbed interface.
