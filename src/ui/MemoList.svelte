@@ -31,8 +31,8 @@
 		dispatch("cancelEdit");
 	}
 
-	function handleSaveEdit() {
-		dispatch("saveEdit");
+	function handleSaveEdit(event) {
+		dispatch("saveEdit", event.detail);
 	}
 
 	function handleDelete(event) {

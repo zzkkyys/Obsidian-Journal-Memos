@@ -413,7 +413,7 @@
 		isSavingEdit = true;
 		errorMessage = "";
 		try {
-			await updateMemo(targetMemo, targetContent);
+			await updateMemo(targetMemo, targetContent, payload?.overrideDate);
 			editingMemo = null;
 			editDraft = "";
 			notice?.("Memo updated");

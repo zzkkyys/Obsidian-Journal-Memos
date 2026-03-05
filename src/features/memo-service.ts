@@ -67,27 +67,42 @@ export class MemoService {
 		this.parseCache.clear();
 	}
 
-	async appendMemo(content: string): Promise<TFile> {
+	async appendMemo(content: string, overrideDate?: Date): Promise<TFile> {
 		const settings = this.readSettings();
-		const now = new Date();
-		const dateKey = formatDateKey(now);
+		const targetDate = overrideDate ?? new Date();
+		const dateKey = formatDateKey(targetDate);
 
 		const file = await ensureDailyNoteFile(this.app, settings.dailyNotesFolder, dateKey, settings.dailyNotePathFormat);
-		await appendMemoBlock(this.app, file, content, now);
+		await appendMemoBlock(this.app, file, content, targetDate);
 		this.invalidate(file.path);
 		return file;
 	}
 
 	async updateMemo(
-		memo: Pick<MemoItem, "id" | "filePath" | "createdLabel" | "content" | "attachments">,
+		memo: Pick<MemoItem, "id" | "filePath" | "dateKey" | "createdAt" | "createdLabel" | "content" | "attachments">,
 		content: string,
+		overrideDate?: Date,
 	): Promise<void> {
+		const newDateKey = overrideDate ? formatDateKey(overrideDate) : memo.dateKey;
+
+		if (overrideDate && newDateKey !== memo.dateKey) {
+			// Move memo to a new daily note
+			await this.deleteMemo(memo);
+			const settings = this.readSettings();
+			const targetFile = await ensureDailyNoteFile(this.app, settings.dailyNotesFolder, newDateKey, settings.dailyNotePathFormat);
+			await appendMemoBlock(this.app, targetFile, content, overrideDate);
+			this.invalidate(memo.filePath);
+			this.invalidate(targetFile.path);
+			return;
+		}
+
+		// Same file update
 		const abstractFile = this.app.vault.getAbstractFileByPath(memo.filePath);
 		if (!(abstractFile instanceof TFile)) {
 			throw new Error(`Daily note not found: ${memo.filePath}`);
 		}
 
-		await updateMemoBlock(this.app, abstractFile, memo, content);
+		await updateMemoBlock(this.app, abstractFile, memo, content, overrideDate);
 		this.invalidate(abstractFile.path);
 	}
 

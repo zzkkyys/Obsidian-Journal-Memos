@@ -491,9 +491,39 @@
 	margin-top: 10px;
 	padding-top: 10px;
 	border-top: 1px solid var(--background-modifier-border);
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
+	position: relative;
+}
+
+/* Single datetime pill absolutely positioned over the textarea top-left */
+.jm-edit-datetime {
+	position: absolute;
+	top: 20px; /* jm-edit-inline padding-top(10) + textarea padding-top(10) */
+	left: 12px; /* matches textarea left padding */
+	z-index: 1;
+}
+
+.jm-datetime-input {
+	-webkit-appearance: none;
+	appearance: none;
+	display: block;
+	width: auto;
+	min-height: 0;
+	margin: 0;
+	padding: 2px 10px;
+	font-size: 11px;
+	font-family: inherit;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--background-primary) 82%, var(--interactive-accent) 18%);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, var(--interactive-accent) 30%);
+	color: var(--text-muted);
+	cursor: pointer;
+	line-height: 1.4;
+	box-sizing: border-box;
+}
+
+/* Push textarea content down to make room for the pills */
+.jm-edit-inline .jm-input-elevated {
+	padding-top: 38px;
 }
 
 .jm-edit-inline-header {

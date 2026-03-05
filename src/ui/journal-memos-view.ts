@@ -1,6 +1,6 @@
 import { ItemView, MarkdownRenderer, Notice, WorkspaceLeaf } from "obsidian";
 import type JournalMemosPlugin from "../main";
-import type { MemoSnapshot } from "../types";
+import type { MemoItem, MemoSnapshot } from "../types";
 import { hexAlphaToRgba } from "../settings";
 import { DuplicateFileModal } from "./DuplicateFileModal";
 import JournalMemosApp from "./JournalMemosApp.svelte";
@@ -78,8 +78,8 @@ export class JournalMemosView extends ItemView {
 			publishMemo: async (content: string) => {
 				await this.plugin.memoService.appendMemo(content);
 			},
-			updateMemo: async (memo: { id: string; filePath: string; createdLabel: string; content: string; attachments: Array<{ path: string; name: string; isImage: boolean }> }, content: string) => {
-				await this.plugin.memoService.updateMemo(memo, content);
+			updateMemo: async (memo: Pick<MemoItem, "id" | "filePath" | "dateKey" | "createdAt" | "createdLabel" | "content" | "attachments">, content: string, overrideDate?: Date) => {
+				await this.plugin.memoService.updateMemo(memo, content, overrideDate);
 			},
 			deleteMemo: async (memo: { id: string; filePath: string; createdLabel: string; content: string; attachments: Array<{ path: string; name: string; isImage: boolean }> }) => {
 				await this.plugin.memoService.deleteMemo(memo);

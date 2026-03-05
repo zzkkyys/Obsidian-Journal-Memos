@@ -23,8 +23,27 @@
 		dispatch("cancelEdit");
 	}
 
+	let editDateTimeString = "";
+
+	$: if (isEditing && !editDateTimeString && memo) {
+		const dt = new Date(memo.createdAt);
+		const yyyy = dt.getFullYear();
+		const mm = String(dt.getMonth() + 1).padStart(2, "0");
+		const dd = String(dt.getDate()).padStart(2, "0");
+		const hr = String(dt.getHours()).padStart(2, "0");
+		const mi = String(dt.getMinutes()).padStart(2, "0");
+		editDateTimeString = `${yyyy}-${mm}-${dd}T${hr}:${mi}`;
+	}
+
 	function handleSaveEdit() {
-		dispatch("saveEdit");
+		let overrideDate = null;
+		if (editDateTimeString) {
+			const parsed = new Date(editDateTimeString);
+			if (!isNaN(parsed.getTime()) && parsed.getTime() !== memo.createdAt) {
+				overrideDate = parsed;
+			}
+		}
+		dispatch("saveEdit", { overrideDate });
 	}
 
 	let confirmDeleteVisible = false;
@@ -199,6 +218,9 @@
 	{#if isEditing}
 		<!-- Edit Mode -->
 		<div class="jm-edit-inline" role="region" aria-label="Edit memo">
+			<div class="jm-edit-datetime">
+				<input type="datetime-local" class="jm-datetime-input" bind:value={editDateTimeString} aria-label="Memo date and time" />
+			</div>
 			<MemoEditor
 				className="jm-edit-input-shell"
 				bind:value={editDraft}

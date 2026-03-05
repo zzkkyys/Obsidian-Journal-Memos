@@ -1,6 +1,6 @@
 import { App, TFile, TFolder, normalizePath } from "obsidian";
 import { MEMO_BLOCK_REGEX, parseMemoBlockBody } from "./memo-parser";
-import { formatCreatedLabel, formatDateKey, getRecentDateKeys } from "../utils/date";
+import { formatCreatedLabel, formatDateKey, getRecentDateKeys, parseCreatedAt } from "../utils/date";
 import type { MemoAttachment, MemoItem } from "../types";
 
 const DAILY_NOTE_NAME_REGEX = /^\d{4}-\d{2}-\d{2}\.md$/;
@@ -102,8 +102,65 @@ export async function ensureDailyNoteFile(
 		await ensureFolder(app, folderPath);
 	}
 
-	const templateContent = await getDailyNoteTemplateContent(app);
-	return app.vault.create(path, templateContent);
+	// Create empty — Templater only injects if content length is 0
+	const file = await app.vault.create(path, "");
+
+	// Apply template: prefer Templater (dynamic), fall back to static copy
+	const templaterApplied = await tryApplyTemplaterTemplate(app, file);
+	if (!templaterApplied) {
+		const staticContent = await getDailyNoteTemplateContent(app);
+		if (staticContent) {
+			await app.vault.modify(file, staticContent);
+		}
+	}
+
+	return file;
+}
+
+/**
+ * Explicitly applies the Templater folder/file template to a newly created file.
+ *
+ * Templater's automatic "on_file_creation" handler fires after a 300 ms delay
+ * and only processes files whose content is still empty at that point.  When
+ * we immediately write memo content after creating the file the auto-handler
+ * sees a non-empty file and skips it.  Calling write_template_to_file here
+ * runs the same logic synchronously so we get dynamic values (tp.date, etc.)
+ * before the memo block is appended.  The delayed auto-handler will later see
+ * non-empty content and skip — no double-processing.
+ */
+async function tryApplyTemplaterTemplate(app: App, file: TFile): Promise<boolean> {
+	try {
+		// @ts-ignore
+		const templater = app.plugins?.plugins?.["templater-obsidian"];
+		if (!templater?.templater) return false;
+
+		const t = templater.templater;
+		if (typeof t.write_template_to_file !== "function") return false;
+
+		// Mirror Templater's own on_file_creation logic:
+		// 1. folder templates (walked up from file's parent)
+		let templateName: string | undefined =
+			typeof t.get_new_file_template_for_folder === "function"
+				? t.get_new_file_template_for_folder(file.parent)
+				: undefined;
+
+		// 2. file regex templates
+		if (!templateName && typeof t.get_new_file_template_for_file === "function") {
+			templateName = t.get_new_file_template_for_file(file);
+		}
+
+		if (!templateName) return false;
+
+		// Resolve template name → TFile (Templater stores full vault-relative paths)
+		const templatePath = templateName.endsWith(".md") ? templateName : `${templateName}.md`;
+		const templateFile = app.vault.getAbstractFileByPath(normalizePath(templatePath));
+		if (!(templateFile instanceof TFile)) return false;
+
+		await t.write_template_to_file(templateFile, file);
+		return true;
+	} catch (e) {
+		return false;
+	}
 }
 
 async function getDailyNoteTemplateContent(app: App): Promise<string> {
@@ -181,6 +238,8 @@ export async function appendMemoBlock(
 	const MEMOS_HEADING = "## memos";
 	const MEMOS_HEADING_REGEX = /^## memos\s*$/im;
 
+	const newTs = createdAt.getTime();
+
 	await app.vault.process(file, (existingText) => {
 		const normalized = existingText.replace(/\r\n/g, "\n");
 
@@ -188,30 +247,42 @@ export async function appendMemoBlock(
 		const headingMatch = MEMOS_HEADING_REGEX.exec(normalized);
 
 		if (headingMatch) {
-			// Find the position after the heading line
 			const headingEndIndex = headingMatch.index + headingMatch[0].length;
 
-			// Find the next heading (## or #) to know where to insert
+			// Find the section boundary (stop at the next heading)
 			const afterHeading = normalized.slice(headingEndIndex);
 			const nextHeadingMatch = /\n(#{1,2}\s+[^\n]+)/m.exec(afterHeading);
+			const sectionEnd = nextHeadingMatch
+				? headingEndIndex + nextHeadingMatch.index
+				: normalized.length;
 
-			let insertPosition: number;
-			if (nextHeadingMatch) {
-				// Insert before the next heading
-				insertPosition = headingEndIndex + nextHeadingMatch.index;
-			} else {
-				// No next heading, append to end
-				insertPosition = normalized.length;
+			// Scan existing memo blocks in the section to find the right insertion point
+			const sectionContent = normalized.slice(headingEndIndex, sectionEnd);
+			let insertOffset = sectionEnd;
+
+			MEMO_BLOCK_REGEX.lastIndex = 0;
+			let match: RegExpExecArray | null;
+			while ((match = MEMO_BLOCK_REGEX.exec(sectionContent)) !== null) {
+				const body = match[1] ?? "";
+				const createdLineMatch = /^created:\s*(.+)$/m.exec(body);
+				if (!createdLineMatch?.[1]) continue;
+				const existingTs = parseCreatedAt(createdLineMatch[1].trim());
+				if (existingTs > newTs) {
+					// Insert before this memo (which is newer)
+					insertOffset = headingEndIndex + match.index;
+					break;
+				}
 			}
 
-			// Ensure proper spacing
-			const beforeInsert = normalized.slice(0, insertPosition);
-			const afterInsert = normalized.slice(insertPosition);
+			const beforeInsert = normalized.slice(0, insertOffset);
+			const afterInsert = normalized.slice(insertOffset);
 
-			const separator = beforeInsert.endsWith("\n\n") ? "" :
+			const leadSep = beforeInsert.endsWith("\n\n") ? "" :
 				beforeInsert.endsWith("\n") ? "\n" : "\n\n";
+			// Ensure a blank line between inserted block and any following content
+			const trailSep = afterInsert.length > 0 && !afterInsert.startsWith("\n") ? "\n" : "";
 
-			return `${beforeInsert}${separator}${block}${afterInsert}`;
+			return `${beforeInsert}${leadSep}${block}${trailSep}${afterInsert}`;
 		} else {
 			// No ## memos section exists, create it at the end
 			const separator = normalized.length > 0 && !normalized.endsWith("\n") ? "\n\n" :
@@ -280,8 +351,11 @@ function buildUpdatedMemoBlock(
 	rawMemoBody: string,
 	fallbackCreatedLabel: string,
 	updatedContent: string,
+	overrideDate?: Date
 ): string {
-	const createdLine = getCreatedLineFromMemoBody(rawMemoBody, fallbackCreatedLabel);
+	const createdLine = overrideDate
+		? `created: ${formatCreatedLabel(overrideDate)}`
+		: getCreatedLineFromMemoBody(rawMemoBody, fallbackCreatedLabel);
 	const attachmentBlock = getAttachmentBlockFromMemoBody(rawMemoBody);
 	const normalizedContent = normalizeMemoText(updatedContent);
 	const lines = ["```memos", createdLine];
@@ -306,6 +380,7 @@ export async function updateMemoBlock(
 	file: TFile,
 	targetMemo: Pick<MemoItem, "id" | "createdLabel" | "content" | "attachments">,
 	updatedContent: string,
+	overrideDate?: Date
 ): Promise<void> {
 	await app.vault.process(file, (existingText) => {
 		const expectedOffset = parseMemoOffsetFromId(targetMemo.id, file.path);
@@ -353,8 +428,8 @@ export async function updateMemoBlock(
 			throw new Error("Could not locate the target memo block in daily note.");
 		}
 
-		const nextBlock = buildUpdatedMemoBlock(selectedBody, targetMemo.createdLabel, updatedContent);
-		return `${existingText.slice(0, selectedStart)}${nextBlock}${existingText.slice(selectedEnd)}`;
+		const newBlock = buildUpdatedMemoBlock(selectedBody, targetMemo.createdLabel, updatedContent, overrideDate);
+		return `${existingText.slice(0, selectedStart)}${newBlock}${existingText.slice(selectedEnd)}`;
 	});
 }
 
