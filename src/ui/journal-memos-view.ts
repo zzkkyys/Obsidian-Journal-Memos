@@ -55,6 +55,7 @@ export class JournalMemosView extends ItemView {
 			exploreColumnLimit: this.plugin.settings.exploreColumnLimit,
 			dayGroupColorA: hexAlphaToRgba(this.plugin.settings.dayGroupColorA, this.plugin.settings.dayGroupAlphaA),
 			dayGroupColorB: hexAlphaToRgba(this.plugin.settings.dayGroupColorB, this.plugin.settings.dayGroupAlphaB),
+			showHeatmapStrip: this.plugin.settings.showHeatmapStrip,
 		});
 	}
 
@@ -74,6 +75,7 @@ export class JournalMemosView extends ItemView {
 			exploreColumnLimit: this.plugin.settings.exploreColumnLimit,
 			dayGroupColorA: hexAlphaToRgba(this.plugin.settings.dayGroupColorA, this.plugin.settings.dayGroupAlphaA),
 			dayGroupColorB: hexAlphaToRgba(this.plugin.settings.dayGroupColorB, this.plugin.settings.dayGroupAlphaB),
+			showHeatmapStrip: this.plugin.settings.showHeatmapStrip,
 			refreshData: () => this.plugin.memoService.getSnapshot(),
 			publishMemo: async (content: string) => {
 				await this.plugin.memoService.appendMemo(content);

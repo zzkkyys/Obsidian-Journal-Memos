@@ -13,6 +13,7 @@ export interface JournalMemosSettings {
 	dayGroupAlphaA: number;
 	dayGroupColorB: string;
 	dayGroupAlphaB: number;
+	showHeatmapStrip: boolean;
 }
 
 export const DEFAULT_SETTINGS: JournalMemosSettings = {
@@ -27,6 +28,7 @@ export const DEFAULT_SETTINGS: JournalMemosSettings = {
 	dayGroupAlphaA: 100,
 	dayGroupColorB: "",
 	dayGroupAlphaB: 100,
+	showHeatmapStrip: true,
 };
 
 function parsePositiveInt(value: string, fallback: number): number {
@@ -147,6 +149,19 @@ export class JournalMemosSettingTab extends PluginSettingTab {
 	}
 
 	private renderViewsTab(container: HTMLElement): void {
+		new Setting(container)
+			.setName("Show activity heatmap strip")
+			.setDesc("Display the GitHub-style contribution heatmap between the mini calendar and the tag list.")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.showHeatmapStrip)
+					.onChange(async (value) => {
+						this.plugin.settings.showHeatmapStrip = value;
+						await this.plugin.saveSettings();
+						await this.plugin.refreshOpenViews();
+					}),
+			);
+
 		new Setting(container)
 			.setName("Stream window (days)")
 			.setDesc("How many recent days to include in the stream list.")

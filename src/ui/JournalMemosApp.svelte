@@ -3,6 +3,7 @@
 	import { formatDateKey } from "../utils/date";
 	import MemoList from "./MemoList.svelte";
 	import MemoHeatmap from "./MemoHeatmap.svelte";
+	import MemoHeatmapStrip from "./MemoHeatmapStrip.svelte";
 	import MemoFilter from "./MemoFilter.svelte";
 	import MemoEditor from "./MemoEditor.svelte";
 	import { memoRenderer } from "./memo-renderer";
@@ -24,6 +25,7 @@
 	export let exploreColumnLimit = 0;
 	export let dayGroupColorA = "";
 	export let dayGroupColorB = "";
+	export let showHeatmapStrip = true;
 	export let notice; // (message: string, timeout?: number) => void
 	export let resolveResourcePath; // (path: string) => string
 
@@ -1439,6 +1441,9 @@
 
 	<aside class="jm-column jm-right-column">
 		<MemoHeatmap {heatmap} {openOrCreateDaily} />
+		{#if showHeatmapStrip}
+			<MemoHeatmapStrip {heatmap} />
+		{/if}
 		<MemoFilter bind:selectedTag {tagStats} {totalMemoCount} />
 	</aside>
 

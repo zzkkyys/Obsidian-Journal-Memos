@@ -843,6 +843,94 @@
 	border-color: color-mix(in srgb, var(--interactive-accent) 78%, var(--background-modifier-border));
 }
 
+/* ── Heatmap strip (GitHub-style contribution graph) ── */
+
+.jm-heatstrip-panel {
+	padding: 10px 12px;
+}
+
+.jm-heatstrip-header {
+	margin-bottom: 6px;
+}
+
+.jm-heatstrip-title {
+	font-size: 11px;
+	color: var(--text-muted);
+}
+
+.jm-heatstrip-body {
+	display: flex;
+	gap: 3px;
+}
+
+.jm-heatstrip-labels {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding-right: 2px;
+}
+
+.jm-heatstrip-label {
+	width: 12px;
+	height: 10px;
+	font-size: 8px;
+	line-height: 10px;
+	color: var(--text-faint);
+	text-align: right;
+}
+
+.jm-heatstrip-grid {
+	display: flex;
+	gap: 2px;
+	flex: 1;
+	min-width: 0;
+}
+
+.jm-heatstrip-col {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	flex: 1;
+	min-width: 0;
+}
+
+.jm-heatstrip-cell {
+	aspect-ratio: 1;
+	width: 100%;
+	border-radius: 2px;
+	border: 1px solid transparent;
+}
+
+.jm-heatstrip-heat-future {
+	background: transparent;
+	border-color: transparent;
+}
+
+.jm-heatstrip-heat-0 {
+	background: color-mix(in srgb, var(--background-modifier-border) 40%, var(--background-primary));
+	border-color: var(--background-modifier-border);
+}
+
+.jm-heatstrip-heat-1 {
+	background: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-primary));
+	border-color: color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
+}
+
+.jm-heatstrip-heat-2 {
+	background: color-mix(in srgb, var(--interactive-accent) 32%, var(--background-primary));
+	border-color: color-mix(in srgb, var(--interactive-accent) 45%, var(--background-modifier-border));
+}
+
+.jm-heatstrip-heat-3 {
+	background: color-mix(in srgb, var(--interactive-accent) 50%, var(--background-primary));
+	border-color: color-mix(in srgb, var(--interactive-accent) 60%, var(--background-modifier-border));
+}
+
+.jm-heatstrip-heat-4 {
+	background: color-mix(in srgb, var(--interactive-accent) 70%, var(--background-primary));
+	border-color: color-mix(in srgb, var(--interactive-accent) 80%, var(--background-modifier-border));
+}
+
 .jm-tag-list {
 	display: flex;
 	flex-wrap: wrap;
