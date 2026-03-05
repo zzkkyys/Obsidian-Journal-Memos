@@ -102,7 +102,44 @@ export async function ensureDailyNoteFile(
 		await ensureFolder(app, folderPath);
 	}
 
-	return app.vault.create(path, "");
+	const templateContent = await getDailyNoteTemplateContent(app);
+	return app.vault.create(path, templateContent);
+}
+
+async function getDailyNoteTemplateContent(app: App): Promise<string> {
+	try {
+		// @ts-ignore
+		const internalPlugin = app.internalPlugins?.getPluginById("daily-notes");
+		if (internalPlugin?.instance?.options?.template) {
+			const templatePath = String(internalPlugin.instance.options.template).trim();
+			let path = templatePath;
+			if (!path.endsWith(".md")) path += ".md";
+			const file = app.vault.getAbstractFileByPath(path);
+			if (file instanceof TFile) {
+				return await app.vault.cachedRead(file);
+			}
+		}
+	} catch (e) {
+		// Ignore
+	}
+
+	try {
+		// @ts-ignore
+		const periodicPlugin = app.plugins?.getPlugin("periodic-notes");
+		if (periodicPlugin?.settings?.daily?.template) {
+			const templatePath = String(periodicPlugin.settings.daily.template).trim();
+			let path = templatePath;
+			if (!path.endsWith(".md")) path += ".md";
+			const file = app.vault.getAbstractFileByPath(path);
+			if (file instanceof TFile) {
+				return await app.vault.cachedRead(file);
+			}
+		}
+	} catch (e) {
+		// Ignore
+	}
+
+	return "";
 }
 
 async function ensureFolder(app: App, folderPath: string): Promise<void> {
