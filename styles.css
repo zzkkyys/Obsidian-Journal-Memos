@@ -517,8 +517,8 @@
 }
 
 .jm-preview-modal {
-	width: min(980px, calc(100vw - 40px));
-	height: min(86vh, 880px);
+	width: min(800px, calc(100vw - 40px));
+	height: min(80vh, 720px);
 	max-height: calc(100vh - 48px);
 	overflow: hidden;
 	border: 1px solid var(--background-modifier-border);
@@ -1035,14 +1035,14 @@
 }
 
 .modal.jm-inline-image-preview-modal {
-	width: min(980px, calc(100vw - 40px));
+	width: min(800px, calc(100vw - 40px));
 	max-width: calc(100vw - 24px);
 	max-height: calc(100vh - 32px);
 }
 
 .modal.jm-inline-image-preview-modal .jm-preview-modal {
 	width: 100%;
-	height: min(86vh, 880px);
+	height: min(80vh, 720px);
 	max-height: calc(100vh - 56px);
 }
 

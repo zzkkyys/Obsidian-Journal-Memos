@@ -85,6 +85,7 @@ export class InlineMemoImagePreviewModal extends Modal {
         this.registerListener(this.contentAreaEl, "pointermove", this.handlePointerMove);
         this.registerListener(this.contentAreaEl, "pointerup", this.handlePointerUp);
         this.registerListener(this.contentAreaEl, "pointercancel", this.handlePointerUp);
+        this.registerListener(this.contentAreaEl, "wheel", this.handleWheel as EventListener, { passive: false });
 
         const footerEl = modalRoot.createDiv({ cls: "jm-preview-footer" });
         this.counterEl = footerEl.createSpan({ cls: "jm-preview-counter" });
@@ -389,6 +390,18 @@ export class InlineMemoImagePreviewModal extends Modal {
             this.contentAreaEl.releasePointerCapture(event.pointerId);
         }
         this.dragPointerId = null;
+    };
+
+    private handleWheel = (event: WheelEvent): void => {
+        if (!this.currentItem?.imageSrc) {
+            return;
+        }
+        event.preventDefault();
+        if (event.deltaY < 0) {
+            this.zoomIn();
+        } else if (event.deltaY > 0) {
+            this.zoomOut();
+        }
     };
 
     private handleKeydown = (event: KeyboardEvent): void => {

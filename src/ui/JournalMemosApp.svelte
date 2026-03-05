@@ -748,6 +748,18 @@
 		);
 	}
 
+	function handlePreviewWheel(event) {
+		if (!previewIsImage) {
+			return;
+		}
+		event.preventDefault();
+		if (event.deltaY < 0) {
+			zoomPreviewIn();
+		} else if (event.deltaY > 0) {
+			zoomPreviewOut();
+		}
+	}
+
 	function togglePreviewPanMode() {
 		if (!previewIsImage) {
 			return;
@@ -1471,6 +1483,7 @@
 						on:pointermove={handlePreviewPointerMove}
 						on:pointerup={handlePreviewPointerUp}
 						on:pointercancel={handlePreviewPointerUp}
+						on:wheel={handlePreviewWheel}
 					>
 						<img
 							src={previewAttachment.imageSrc}
@@ -1478,18 +1491,21 @@
 						/>
 					</div>
 				{:else}
-					<div
-						class={`jm-preview-content ${previewIsImage ? "is-image" : ""} ${previewPanEnabled ? "is-pan-enabled" : ""}`}
-						style={previewTransformStyle}
-						on:pointerdown={handlePreviewPointerDown}
-						on:pointermove={handlePreviewPointerMove}
-						on:pointerup={handlePreviewPointerUp}
-						on:pointercancel={handlePreviewPointerUp}
-						use:renderMemo={{
-							markdown: previewAttachment.markdown,
-							sourcePath: previewAttachment.sourcePath,
-						}}
-					></div>
+					{#key previewAttachment.key}
+						<div
+							class={`jm-preview-content ${previewIsImage ? "is-image" : ""} ${previewPanEnabled ? "is-pan-enabled" : ""}`}
+							style={previewTransformStyle}
+							on:pointerdown={handlePreviewPointerDown}
+							on:pointermove={handlePreviewPointerMove}
+							on:pointerup={handlePreviewPointerUp}
+							on:pointercancel={handlePreviewPointerUp}
+							on:wheel={handlePreviewWheel}
+							use:renderMemo={{
+								markdown: previewAttachment.markdown,
+								sourcePath: previewAttachment.sourcePath,
+							}}
+						></div>
+					{/key}
 				{/if}
 				<div class="jm-preview-footer">
 					{#if previewCounterLabel}
