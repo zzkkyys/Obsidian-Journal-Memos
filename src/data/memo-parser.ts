@@ -1,14 +1,15 @@
 import { TFile } from "obsidian";
 import type { MemoAttachment, MemoItem } from "../types";
 import { parseCreatedAt } from "../utils/date";
+import { fileNameFromPath, looksLikeImageFile } from "../utils/path";
 
-const MEMO_BLOCK_REGEX = /^[ \t]*```memos[^\S\r\n]*\r?\n([\s\S]*?)\r?\n[ \t]*```[^\S\r\n]*(?=\r?\n|$)/gm;
+export const MEMO_BLOCK_REGEX = /^[ \t]*```memos[^\S\r\n]*\r?\n([\s\S]*?)\r?\n[ \t]*```[^\S\r\n]*(?=\r?\n|$)/gm;
 const CREATED_LINE_REGEX = /^\s*created:\s*(.+)$/m;
 const TAG_REGEX = /(^|[\s(])#([^\s#.,!?()[\]{}"']+)/g;
 const TAGS_LINE_REGEX = /^\s*tags:\s*(.*)$/i;
 const ATTACHMENT_BLOCK_REGEX = /<!--\s*jm-attachments:start\s*-->\s*([\s\S]*?)\s*<!--\s*jm-attachments:end\s*-->/i;
 const ATTACHMENT_LINE_REGEX = /^\s*jm-attachment:\s*(.+?)\s*$/gm;
-const IMAGE_FILE_EXT_REGEX = /\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif|tiff?)$/i;
+
 
 export interface ParsedMemoBlock {
 	createdAt: number;
@@ -61,17 +62,7 @@ function splitMemoContentAndTags(raw: string): { content: string; tags: string[]
 	};
 }
 
-function fileNameFromPath(path: string): string {
-	const normalized = path.replace(/\\/g, "/");
-	const segments = normalized.split("/");
-	const name = segments.length > 0 ? segments[segments.length - 1]?.trim() ?? "" : "";
-	return name || path;
-}
 
-function looksLikeImageAttachment(path: string): boolean {
-	const normalized = path.split("#")[0]?.split("?")[0]?.trim() ?? "";
-	return IMAGE_FILE_EXT_REGEX.test(normalized);
-}
 
 function parseAttachmentPath(raw: string): string | null {
 	const trimmed = raw.trim();
@@ -118,7 +109,7 @@ function extractWikiLinkAttachments(content: string): MemoAttachment[] {
 		}
 
 		// Only treat as attachment if it looks like an image/file
-		if (looksLikeImageAttachment(path)) {
+		if (looksLikeImageFile(path)) {
 			attachmentSet.add(path);
 			attachments.push({
 				path,
@@ -156,7 +147,7 @@ function extractLegacyAttachmentBlock(raw: string): { content: string; attachmen
 		attachments.push({
 			path,
 			name: fileNameFromPath(path),
-			isImage: looksLikeImageAttachment(path),
+			isImage: looksLikeImageFile(path),
 		});
 	}
 

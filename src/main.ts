@@ -16,8 +16,7 @@ import { MemoService } from "./features/memo-service";
 import { DEFAULT_SETTINGS, JournalMemosSettingTab, type JournalMemosSettings } from "./settings";
 import { JOURNAL_MEMOS_VIEW_TYPE, JournalMemosView } from "./ui/journal-memos-view";
 import { InlineMemoImagePreviewModal, type InlineMemoPreviewItem } from "./ui/InlineMemoImagePreviewModal";
-
-const IMAGE_FILE_EXT_REGEX = /\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif|tiff?)(?:[?#].*)?$/i;
+import { fileNameFromPath, looksLikeImageFile } from "./utils/path";
 
 
 
@@ -231,7 +230,7 @@ export default class JournalMemosPlugin extends Plugin {
 		if (internalPath) {
 			return {
 				key: `internal:${internalPath}`,
-				name: this.fileNameFromPath(internalPath),
+				name: fileNameFromPath(internalPath),
 				sourcePath: resolvedSourcePath,
 				markdown: `![[${internalPath}]]`,
 				imageSrc: "",
@@ -243,7 +242,7 @@ export default class JournalMemosPlugin extends Plugin {
 			return null;
 		}
 
-		const name = String(imageEl.getAttribute("alt") ?? "").trim() || this.fileNameFromPath(imageSrc);
+		const name = String(imageEl.getAttribute("alt") ?? "").trim() || fileNameFromPath(imageSrc);
 		return {
 			key: `src:${imageSrc}`,
 			name,
@@ -325,12 +324,6 @@ export default class JournalMemosPlugin extends Plugin {
 			return "";
 		}
 
-		return IMAGE_FILE_EXT_REGEX.test(normalized) ? normalized : "";
-	}
-
-	private fileNameFromPath(path: string): string {
-		const normalized = path.replace(/\\/g, "/");
-		const segments = normalized.split("/");
-		return segments.length > 0 ? segments[segments.length - 1] ?? normalized : normalized;
+		return looksLikeImageFile(normalized) ? normalized : "";
 	}
 }

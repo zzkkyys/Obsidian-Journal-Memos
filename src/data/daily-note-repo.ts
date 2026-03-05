@@ -1,10 +1,9 @@
 import { App, TFile, TFolder, normalizePath } from "obsidian";
-import { parseMemoBlockBody } from "./memo-parser";
+import { MEMO_BLOCK_REGEX, parseMemoBlockBody } from "./memo-parser";
 import { formatCreatedLabel, formatDateKey, getRecentDateKeys } from "../utils/date";
 import type { MemoAttachment, MemoItem } from "../types";
 
 const DAILY_NOTE_NAME_REGEX = /^\d{4}-\d{2}-\d{2}\.md$/;
-const MEMO_BLOCK_REGEX = /^```memos[^\S\r\n]*\r?\n([\s\S]*?)\r?\n```[^\S\r\n]*(?=\r?\n|$)/gm;
 const CREATED_LINE_REGEX = /^created:\s*(.+)$/m;
 const ATTACHMENT_BLOCK_REGEX = /<!--\s*jm-attachments:start\s*-->\s*([\s\S]*?)\s*<!--\s*jm-attachments:end\s*-->/i;
 
@@ -54,8 +53,10 @@ export function isDailyNotePath(path: string, folder: string): boolean {
 		return false;
 	}
 
-	const fileName = prefix ? path.slice(prefix.length) : path;
-	return DAILY_NOTE_NAME_REGEX.test(fileName);
+	// Only check the basename (last path segment) so that nested directory
+	// structures like {folder}/{yyyy}/{MM}/{yyyy-MM-dd}.md still match.
+	const baseName = path.split("/").pop() ?? "";
+	return DAILY_NOTE_NAME_REGEX.test(baseName);
 }
 
 export function getRecentDailyFiles(app: App, folder: string, days: number, format?: string): TFile[] {

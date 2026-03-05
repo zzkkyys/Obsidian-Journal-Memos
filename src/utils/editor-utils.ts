@@ -1,5 +1,5 @@
 // Wiki-link based attachment system
-const IMAGE_FILE_EXT_REGEX = /\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif|tiff?)$/i;
+import { looksLikeImageFile } from "../utils/path";
 const WIKI_LINK_REGEX = /!?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
 
 // Legacy attachment block patterns (for backward compatibility)
@@ -7,10 +7,7 @@ export const ATTACHMENT_BLOCK_START = "<!-- jm-attachments:start -->";
 export const ATTACHMENT_BLOCK_END = "<!-- jm-attachments:end -->";
 export const ATTACHMENT_LINE_PREFIX = "jm-attachment:";
 
-function isImagePath(path: string): boolean {
-	const normalized = path.split("#")[0]?.split("?")[0]?.trim() ?? "";
-	return IMAGE_FILE_EXT_REGEX.test(normalized);
-}
+
 
 export function parseAttachmentPathsFromBlock(blockContent: string): string[] {
 	const paths: string[] = [];
@@ -35,7 +32,7 @@ export function extractWikiLinkPaths(content: string): string[] {
 
 	while ((match = WIKI_LINK_REGEX.exec(content)) !== null) {
 		const path = match[1]?.trim();
-		if (path && !seen.has(path) && isImagePath(path)) {
+		if (path && !seen.has(path) && looksLikeImageFile(path)) {
 			seen.add(path);
 			paths.push(path);
 		}

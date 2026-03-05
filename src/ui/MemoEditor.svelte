@@ -5,7 +5,7 @@
 		splitDraftAndAttachmentPaths,
 		renderAttachmentBlock,
 	} from "../utils/editor-utils";
-
+	import { fileNameFromPath, looksLikeImageFile } from "../utils/path";
 	export let value = ""; // The full markdown draft
 	export let placeholder = "";
 	export let rows = 4;
@@ -17,10 +17,6 @@
 
 	export let resolveResourcePath; // (path) => string
 	const dispatch = createEventDispatcher();
-	const IMAGE_FILE_EXT_REGEX =
-		/\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif|tiff?)$/i;
-
-	// ... (existing imports)
 
 	let attachmentInputEl;
 	let isUploading = false;
@@ -35,19 +31,8 @@
 		currentAttachments = attachmentPaths.map((path) => ({
 			path,
 			name: fileNameFromPath(path),
-			isImage: IMAGE_FILE_EXT_REGEX.test(path),
+			isImage: looksLikeImageFile(path),
 		}));
-		console.log("[MemoEditor] Parsed value:", {
-			body,
-			attachmentPaths,
-			currentAttachments,
-		});
-	}
-
-	function fileNameFromPath(path) {
-		const normalized = String(path ?? "").replace(/\\/g, "/");
-		const segments = normalized.split("/");
-		return segments.length > 0 ? segments[segments.length - 1] : normalized;
 	}
 
 	function combineToValue() {

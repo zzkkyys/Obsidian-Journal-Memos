@@ -13,8 +13,7 @@ import { extractMemosFromMarkdown } from "../data/memo-parser";
 import type { JournalMemosSettings } from "../settings";
 import type { HeatmapCell, MemoAttachment, MemoAttachmentInput, MemoItem, MemoSnapshot } from "../types";
 import { formatDateKey, getRecentDateKeys } from "../utils/date";
-
-const IMAGE_FILE_EXT_REGEX = /\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif|tiff?)$/i;
+import { fileNameFromPath, looksLikeImageFile } from "../utils/path";
 
 const MIME_EXTENSION_MAP: Record<string, string> = {
 	"image/avif": ".avif",
@@ -137,7 +136,7 @@ export class MemoService {
 			const contentDuplicatePath = await this.attachmentManager.getDuplicatePath(buffer);
 
 			if (contentDuplicatePath && duplicateHandler) {
-				const fileName = this.getFileName(contentDuplicatePath);
+				const fileName = fileNameFromPath(contentDuplicatePath);
 				const action = await duplicateHandler(attachment.name, contentDuplicatePath, "content_match");
 
 				if (action === "use_existing") {
@@ -167,7 +166,7 @@ export class MemoService {
 					const isImage = this.isImageAttachment(directPath, attachment.mimeType);
 					saved.push({
 						path: directPath,
-						name: this.getFileName(directPath),
+						name: fileNameFromPath(directPath),
 						isImage,
 					});
 					continue;
@@ -188,7 +187,7 @@ export class MemoService {
 			const isImage = this.isImageAttachment(path, attachment.mimeType);
 			saved.push({
 				path,
-				name: this.getFileName(path),
+				name: fileNameFromPath(path),
 				isImage,
 			});
 		}
@@ -390,12 +389,6 @@ export class MemoService {
 		if (normalizedMime.startsWith("image/")) {
 			return true;
 		}
-		return IMAGE_FILE_EXT_REGEX.test(sourceName);
-	}
-
-	private getFileName(path: string): string {
-		const normalized = path.replace(/\\/g, "/");
-		const segments = normalized.split("/");
-		return segments.length > 0 ? segments[segments.length - 1] ?? path : path;
+		return looksLikeImageFile(sourceName);
 	}
 }

@@ -7,6 +7,7 @@
 	import MemoEditor from "./MemoEditor.svelte";
 	import { memoRenderer } from "./memo-renderer";
 	import { renderAttachmentBlock } from "../utils/editor-utils";
+	import { fileNameFromPath, looksLikeImageFile } from "../utils/path";
 
 	export let stream = [];
 	export let heatmap = [];
@@ -33,8 +34,6 @@
 		{ id: "attachments", label: "Attachments" },
 		{ id: "settings", label: "Settings" },
 	];
-	const IMAGE_FILE_EXT_REGEX =
-		/\.(?:png|jpe?g|gif|webp|bmp|svg|avif|heic|heif|tiff?)$/i;
 	const WIKI_IMAGE_REGEX = /!\[\[([^[\]\n]+)\]\]/g;
 	const MARKDOWN_IMAGE_REGEX =
 		/!\[[^\]\n]*\]\((?:\\.|[^()\n]|\([^()\n]*\))*\)/g;
@@ -172,14 +171,7 @@
 			);
 	}
 
-	function hashWithSeed(value, seed) {
-		let hash = (2166136261 ^ seed) >>> 0;
-		for (let index = 0; index < value.length; index += 1) {
-			hash ^= value.charCodeAt(index);
-			hash = Math.imul(hash, 16777619);
-		}
-		return hash >>> 0;
-	}
+
 
 	function buildExploreMemos(memos, seed, limit) {
 		if (!Array.isArray(memos) || memos.length === 0) {
@@ -235,14 +227,7 @@
 		return items;
 	}
 
-	function looksLikeImageFile(target) {
-		const normalized = String(target ?? "")
-			.split("|")[0]
-			.split("#")[0]
-			.trim();
 
-		return IMAGE_FILE_EXT_REGEX.test(normalized);
-	}
 
 	function extractImageEmbeds(content) {
 		if (!content) {
@@ -443,13 +428,7 @@
 		}
 	}
 
-	function fileNameFromPath(path) {
-		const normalized = String(path ?? "").replace(/\\/g, "/");
-		const segments = normalized.split("/");
-		return segments.length > 0
-			? segments[segments.length - 1] || normalized
-			: normalized;
-	}
+
 
 	function normalizeInternalImagePathCandidate(candidate) {
 		const normalized = String(candidate ?? "")
@@ -1449,32 +1428,7 @@
 	<aside class="jm-column jm-right-column">
 		<MemoHeatmap {heatmap} {openOrCreateDaily} />
 		<MemoFilter bind:selectedTag {tagStats} {totalMemoCount} />
-		<!-- Wait, MemoFilter props update selectedTag via binding in main component? -->
-		<!-- In MemoFilter.svelte I didn't verify if I used `bind:selectedTag`. Let me check. -->
-		<!-- Checked: In MemoFilter.svelte, `export let selectedTag` is a prop. If I pass it, it reacts. -->
-		<!-- But `selectTag` inside MemoFilter updates the local prop. -->
-		<!-- I should probably bind it: `bind:selectedTag={selectedTag}` -->
 	</aside>
-
-	<!-- Re-inject MemoFilter with correct binding -->
-	<!-- Wait, I missed closing tag for aside -->
-
-	<!-- Fixing sidebar -->
-	<!-- Also `layoutEl` binding on MemoFilter is wrong. `layoutEl` was the main container in original code. -->
-	<!-- In my new code, `layoutEl` is on the root div. `bind:this={layoutEl}` on line 426. -->
-	<!-- I will fix the sidebar section below -->
-
-	<!-- Sidebar Correction -->
-	<!--
-	<aside class="jm-column jm-right-column">
-		<MemoHeatmap {heatmap} {openOrCreateDaily} />
-		<MemoFilter
-			bind:selectedTag
-			{tagStats}
-			{totalMemoCount}
-		/>
-	</aside>
-	-->
 
 	{#if previewAttachment}
 		<div
