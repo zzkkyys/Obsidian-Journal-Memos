@@ -1,5 +1,6 @@
 import { Editor, Notice } from "obsidian";
 import type JournalMemosPlugin from "../main";
+import { QuickCaptureModal } from "../ui/QuickCaptureModal";
 
 async function appendSelection(plugin: JournalMemosPlugin, editor: Editor): Promise<void> {
 	const selection = editor.getSelection().trim();
@@ -27,6 +28,14 @@ export function registerCommands(plugin: JournalMemosPlugin): void {
 		name: "Append selection as memo",
 		editorCallback: (editor) => {
 			void appendSelection(plugin, editor);
+		},
+	});
+
+	plugin.addCommand({
+		id: "quick-capture-memo",
+		name: "Quick capture memo",
+		callback: () => {
+			new QuickCaptureModal(plugin).open();
 		},
 	});
 }

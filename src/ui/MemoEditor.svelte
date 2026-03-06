@@ -1,5 +1,5 @@
 <script>
-	import { createEventDispatcher, onMount } from "svelte";
+	import { createEventDispatcher, onMount, tick } from "svelte";
 	import MemoInputBox from "./MemoInputBox.svelte";
 	import {
 		splitDraftAndAttachmentPaths,
@@ -81,9 +81,11 @@
 	}
 
 	async function handleSubmit() {
-		if (disabled || isUploading || !value.trim()) {
-			return;
-		}
+		if (disabled || isUploading) return;
+		// Force sync and flush so parent binding (draft) is up-to-date
+		syncValueToParent();
+		await tick();
+		if (!value.trim()) return;
 		dispatch("submit");
 	}
 

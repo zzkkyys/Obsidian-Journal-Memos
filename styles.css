@@ -1553,3 +1553,32 @@ mark.jm-search-highlight {
 .jm-confirm-no:hover {
 	background: var(--background-modifier-border);
 }
+
+/* ── Quick Capture Modal ── */
+
+.jm-quick-capture {
+	padding: 0;
+}
+
+.jm-quick-capture .jm-memo-editor {
+	width: 100%;
+}
+
+.jm-quick-capture .jm-input-elevated {
+	min-height: 160px;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+.jm-quick-capture .jm-input-elevated:focus {
+	box-shadow: none;
+	border-color: transparent;
+}
+
+.modal.mod-quick-capture,
+.modal:has(.jm-quick-capture) {
+	width: 560px;
+	max-width: 90vw;
+}

@@ -44,6 +44,7 @@ const context = await esbuild.context({
 		sveltePlugin({
 			compilerOptions: {
 				dev: !prod,
+				accessors: true,
 			},
 		}),
 	],
