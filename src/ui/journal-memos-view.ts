@@ -56,6 +56,10 @@ export class JournalMemosView extends ItemView {
 			dayGroupColorA: hexAlphaToRgba(this.plugin.settings.dayGroupColorA, this.plugin.settings.dayGroupAlphaA),
 			dayGroupColorB: hexAlphaToRgba(this.plugin.settings.dayGroupColorB, this.plugin.settings.dayGroupAlphaB),
 			showHeatmapStrip: this.plugin.settings.showHeatmapStrip,
+			qweatherApiKey: this.plugin.settings.qweatherApiKey,
+			qweatherLocation: this.plugin.settings.qweatherLocation,
+			qweatherRefreshInterval: this.plugin.settings.qweatherRefreshInterval,
+			qweatherIconSet: this.plugin.settings.qweatherIconSet,
 		});
 	}
 
@@ -76,6 +80,10 @@ export class JournalMemosView extends ItemView {
 			dayGroupColorA: hexAlphaToRgba(this.plugin.settings.dayGroupColorA, this.plugin.settings.dayGroupAlphaA),
 			dayGroupColorB: hexAlphaToRgba(this.plugin.settings.dayGroupColorB, this.plugin.settings.dayGroupAlphaB),
 			showHeatmapStrip: this.plugin.settings.showHeatmapStrip,
+			qweatherApiKey: this.plugin.settings.qweatherApiKey,
+			qweatherLocation: this.plugin.settings.qweatherLocation,
+			qweatherRefreshInterval: this.plugin.settings.qweatherRefreshInterval,
+			qweatherIconSet: this.plugin.settings.qweatherIconSet,
 			refreshData: () => this.plugin.memoService.getSnapshot(),
 			publishMemo: async (content: string) => {
 				await this.plugin.memoService.appendMemo(content);

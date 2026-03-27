@@ -14,6 +14,10 @@ export interface JournalMemosSettings {
 	dayGroupColorB: string;
 	dayGroupAlphaB: number;
 	showHeatmapStrip: boolean;
+	qweatherApiKey: string;
+	qweatherLocation: string;
+	qweatherRefreshInterval: number;
+	qweatherIconSet: string;
 }
 
 export const DEFAULT_SETTINGS: JournalMemosSettings = {
@@ -29,6 +33,10 @@ export const DEFAULT_SETTINGS: JournalMemosSettings = {
 	dayGroupColorB: "",
 	dayGroupAlphaB: 100,
 	showHeatmapStrip: true,
+	qweatherApiKey: "",
+	qweatherLocation: "",
+	qweatherRefreshInterval: 30,
+	qweatherIconSet: "qweather",
 };
 
 function parsePositiveInt(value: string, fallback: number): number {
@@ -69,6 +77,7 @@ export class JournalMemosSettingTab extends PluginSettingTab {
 			{ id: "paths", label: "📁  Paths" },
 			{ id: "views", label: "👁  Views" },
 			{ id: "appearance", label: "🎨  Appearance" },
+			{ id: "weather", label: "🌤  Weather" },
 		];
 
 		const contentContainer = containerEl.createDiv({ cls: "jm-settings-content" });
@@ -94,6 +103,9 @@ export class JournalMemosSettingTab extends PluginSettingTab {
 				break;
 			case "appearance":
 				this.renderAppearanceTab(contentContainer);
+				break;
+			case "weather":
+				this.renderWeatherTab(contentContainer);
 				break;
 		}
 	}
@@ -228,6 +240,74 @@ export class JournalMemosSettingTab extends PluginSettingTab {
 						const parsed = Number.parseInt(value, 10);
 						this.plugin.settings.exploreColumnLimit =
 							isNaN(parsed) || parsed < 0 ? 0 : parsed;
+						await this.plugin.saveSettings();
+						await this.plugin.refreshOpenViews();
+					}),
+			);
+	}
+
+	private renderWeatherTab(container: HTMLElement): void {
+		container.createEl("p", {
+			text: "显示在日历上方的天气卡片，使用和风天气 API 获取实时天气。城市可填写城市名（如「深圳」）、LocationID（如 101280601）或经纬度坐标（如「114.06,22.55」）。",
+			cls: "setting-item-description",
+		});
+
+		new Setting(container)
+			.setName("和风天气 API Key")
+			.setDesc("在 dev.qweather.com 注册后获取，免费版使用开发者 API。")
+			.addText((text) =>
+				text
+					.setPlaceholder("your-api-key")
+					.setValue(this.plugin.settings.qweatherApiKey)
+					.onChange(async (value) => {
+						this.plugin.settings.qweatherApiKey = value.trim();
+						await this.plugin.saveSettings();
+						await this.plugin.refreshOpenViews();
+					}),
+			);
+
+		new Setting(container)
+			.setName("城市 / 位置")
+			.setDesc("城市名、LocationID 或经纬度坐标（经度,纬度）。")
+			.addText((text) =>
+				text
+					.setPlaceholder("深圳 / 101280601 / 114.06,22.55")
+					.setValue(this.plugin.settings.qweatherLocation)
+					.onChange(async (value) => {
+						this.plugin.settings.qweatherLocation = value.trim();
+						await this.plugin.saveSettings();
+						await this.plugin.refreshOpenViews();
+					}),
+			);
+
+		new Setting(container)
+			.setName("天气图标风格")
+			.setDesc("和风天气：官方黑白图标。Meteocons：彩色动态图标（需联网加载）。")
+			.addDropdown((drop) =>
+				drop
+					.addOption("qweather", "和风天气（黑白）")
+					.addOption("qweather-s2", "和风天气 S2（彩色）")
+					.addOption("meteocons-fill", "Meteocons 填充版（彩色）")
+					.addOption("meteocons-line", "Meteocons 线条版（彩色）")
+					.setValue(this.plugin.settings.qweatherIconSet)
+					.onChange(async (value) => {
+						this.plugin.settings.qweatherIconSet = value;
+						await this.plugin.saveSettings();
+						await this.plugin.refreshOpenViews();
+					}),
+			);
+
+		new Setting(container)
+			.setName("自动刷新间隔（分钟）")
+			.setDesc("每隔多少分钟自动刷新天气，设为 0 则关闭自动刷新。")
+			.addText((text) =>
+				text
+					.setPlaceholder("30")
+					.setValue(String(this.plugin.settings.qweatherRefreshInterval))
+					.onChange(async (value) => {
+						const parsed = Number.parseInt(value, 10);
+						this.plugin.settings.qweatherRefreshInterval =
+							isNaN(parsed) || parsed < 0 ? 30 : parsed;
 						await this.plugin.saveSettings();
 						await this.plugin.refreshOpenViews();
 					}),

@@ -1582,3 +1582,230 @@ mark.jm-search-highlight {
 	width: 560px;
 	max-width: 90vw;
 }
+
+/* ── Weather Card ── */
+.jm-weather-card {
+	padding: 10px 12px 10px;
+}
+
+/* Unconfigured state */
+.jm-weather-unconfigured {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	padding: 4px 0;
+	font-size: 11.5px;
+	color: var(--text-faint);
+	line-height: 1.4;
+}
+
+.jm-weather-cloud-icon {
+	flex-shrink: 0;
+	opacity: 0.5;
+}
+
+/* Loading state */
+.jm-weather-loading {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 0;
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+/* Error state */
+.jm-weather-error-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	padding: 2px 0;
+}
+
+.jm-weather-error-text {
+	font-size: 11.5px;
+	color: var(--text-error);
+}
+
+/* Header: location + refresh */
+.jm-weather-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 8px;
+}
+
+.jm-weather-location {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-muted);
+	letter-spacing: 0.02em;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.jm-weather-refresh {
+	width: 20px;
+	height: 20px;
+	flex-shrink: 0;
+	border: none;
+	background: transparent;
+	color: var(--text-faint);
+}
+
+.jm-weather-refresh:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-muted);
+}
+
+/* Main current weather row */
+.jm-weather-now {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 10px;
+}
+
+.jm-weather-now-left {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+}
+
+.jm-weather-icon-lg {
+	width: 48px;
+	height: 48px;
+	flex-shrink: 0;
+	display: block;
+}
+
+.jm-weather-icon-lg.is-meteocons,
+.jm-forecast-icon.is-meteocons {
+	filter: saturate(1.6) contrast(1.05);
+}
+
+.jm-weather-temp {
+	font-size: 30px;
+	font-weight: 700;
+	line-height: 1;
+	color: var(--text-normal);
+	letter-spacing: -0.5px;
+}
+
+.jm-weather-unit {
+	font-size: 14px;
+	font-weight: 400;
+	color: var(--text-muted);
+	margin-left: 1px;
+}
+
+.jm-weather-condition {
+	font-size: 12px;
+	color: var(--text-muted);
+	margin-top: 3px;
+}
+
+/* Stats: 体感 / 湿度 / 风力 — right side of main row */
+.jm-weather-stats {
+	display: flex;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+.jm-weather-stat {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 3px;
+	padding: 6px 8px 5px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-primary);
+}
+
+.jm-weather-stat svg {
+	color: var(--text-muted);
+	opacity: 0.85;
+}
+
+.jm-weather-stat-value {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-normal);
+	line-height: 1;
+}
+
+.jm-weather-stat-label {
+	font-size: 10px;
+	color: var(--text-faint);
+	line-height: 1;
+}
+
+/* Forecast strip */
+.jm-weather-forecast {
+	display: flex;
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: 8px;
+	gap: 0;
+}
+
+.jm-weather-forecast-day {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 3px;
+	padding: 0 2px;
+}
+
+.jm-weather-forecast-day:not(:last-child) {
+	border-right: 1px solid var(--background-modifier-border);
+}
+
+.jm-forecast-label {
+	font-size: 11px;
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+.jm-forecast-icon {
+	width: 22px;
+	height: 22px;
+	display: block;
+}
+
+.jm-forecast-temps {
+	display: flex;
+	align-items: baseline;
+	gap: 1px;
+	font-size: 11px;
+}
+
+.jm-forecast-high {
+	color: var(--text-normal);
+	font-weight: 500;
+}
+
+.jm-forecast-sep {
+	color: var(--text-faint);
+	font-size: 10px;
+}
+
+.jm-forecast-low {
+	color: var(--text-faint);
+}
+
+/* Spin animation */
+@keyframes jm-spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
+}
+
+.jm-spin {
+	animation: jm-spin 1s linear infinite;
+	display: inline-block;
+}
