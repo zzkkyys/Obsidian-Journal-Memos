@@ -1,5 +1,6 @@
 <script>
 	import { onMount, onDestroy } from "svelte";
+	import { tagAutocomplete } from "./tag-autocomplete";
 
 	export let value = "";
 	export let rows = 4;
@@ -8,6 +9,7 @@
 	export let className = "";
 	export let onKeydown;
 	export let onPaste;
+	export let existingTags = [];
 
 	let textareaEl;
 
@@ -38,6 +40,7 @@
 		{placeholder}
 		{disabled}
 		bind:value
+		use:tagAutocomplete={existingTags}
 		on:keydown={onKeydown}
 		on:paste={onPaste}
 	></textarea>

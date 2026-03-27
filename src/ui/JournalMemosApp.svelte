@@ -74,6 +74,7 @@
 	let isSavingEdit = false;
 
 	$: tagStats = buildTagStats(stream);
+	$: existingTags = tagStats.map((s) => s.tag);
 	$: totalMemoCount = stream.length;
 	$: maxImageWidthCss = `${Math.max(120, Number(memoImageMaxWidth) || 640)}px`;
 	$: previewAttachment =
@@ -1035,6 +1036,7 @@
 					{isUploading}
 					{saveAttachments}
 					{resolveResourcePath}
+					{existingTags}
 					on:submit={submit}
 				/>
 			</section>
@@ -1155,6 +1157,7 @@
 						{dayGroupColorA}
 						{dayGroupColorB}
 						{searchQuery}
+						{existingTags}
 						on:edit={(e) => openMemoEditor(e.detail)}
 						on:cancelEdit={closeMemoEditor}
 						on:saveEdit={(e) => saveMemoEdit(e.detail)}

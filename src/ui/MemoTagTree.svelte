@@ -1,6 +1,7 @@
 <script>
 	import { createEventDispatcher } from "svelte";
 	import { slide } from "svelte/transition";
+	import { tagBgStyle } from "../utils/tag-color";
 
 	export let nodes = [];
 	export let selectedTag = "";
@@ -36,6 +37,7 @@
 				class="jm-tag-tree-row {selectedTag === node.fullPath
 					? 'is-active'
 					: ''}"
+				style={tagBgStyle(node.fullPath, selectedTag === node.fullPath)}
 				on:click={() => handleSelect(node)}
 				on:keydown={(e) => e.key === "Enter" && handleSelect(node)}
 				role="button"

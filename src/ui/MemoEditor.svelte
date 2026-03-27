@@ -16,6 +16,7 @@
 	export let className = "";
 
 	export let resolveResourcePath; // (path) => string
+	export let existingTags = [];
 	const dispatch = createEventDispatcher();
 
 	let attachmentInputEl;
@@ -205,6 +206,7 @@
 		{rows}
 		{placeholder}
 		{disabled}
+		{existingTags}
 		onKeydown={handleKeydown}
 		onPaste={handlePaste}
 	>

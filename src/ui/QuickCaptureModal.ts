@@ -29,6 +29,7 @@ export class QuickCaptureModal extends Modal {
 				disabled: false,
 				submitLabel: "Publish",
 				showCancel: true,
+				existingTags: this.plugin.memoService.getKnownTags(),
 				saveAttachments: (attachments: Array<{ name: string; mimeType: string; data: ArrayBuffer }>) =>
 					this.plugin.memoService.saveAttachments(attachments, async (name, existingPath, matchType) => {
 						return new Promise<"use_existing" | "create_new" | "skip">((resolve) => {

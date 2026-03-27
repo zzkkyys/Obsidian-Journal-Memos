@@ -13,6 +13,7 @@
 	export let dayGroupColorA = ""; // Background color A for alternating groups
 	export let dayGroupColorB = ""; // Background color B for alternating groups
 	export let searchQuery = ""; // Search query for highlighting
+	export let existingTags = [];
 
 	const dispatch = createEventDispatcher();
 
@@ -157,6 +158,7 @@
 						{saveAttachments}
 						{resolveResourcePath}
 						{searchQuery}
+						{existingTags}
 						on:edit={handleEditClick}
 						on:cancelEdit={handleCancelEdit}
 						on:saveEdit={handleSaveEdit}

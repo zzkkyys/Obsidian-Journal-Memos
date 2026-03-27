@@ -67,6 +67,18 @@ export class MemoService {
 		this.parseCache.clear();
 	}
 
+	getKnownTags(): string[] {
+		const tagSet = new Set<string>();
+		for (const entry of this.parseCache.values()) {
+			for (const memo of entry.memos) {
+				for (const tag of memo.tags) {
+					tagSet.add(tag);
+				}
+			}
+		}
+		return Array.from(tagSet).sort();
+	}
+
 	async appendMemo(content: string, overrideDate?: Date): Promise<TFile> {
 		const settings = this.readSettings();
 		const targetDate = overrideDate ?? new Date();

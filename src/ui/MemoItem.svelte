@@ -12,6 +12,7 @@
 	export let saveAttachments; // (files) => Promise<Attachment[]>
 	export let resolveResourcePath; // (path) => string
 	export let searchQuery = "";
+	export let existingTags = [];
 
 	const dispatch = createEventDispatcher();
 
@@ -229,6 +230,7 @@
 				submitLabel="Save"
 				{saveAttachments}
 				{resolveResourcePath}
+				{existingTags}
 				on:cancel={handleCancelEdit}
 				on:submit={handleSaveEdit}
 			/>
