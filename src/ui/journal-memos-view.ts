@@ -51,6 +51,7 @@ export class JournalMemosView extends ItemView {
 		this.component.$set({
 			stream: snapshot.stream,
 			heatmap: snapshot.heatmap,
+			streamPageSize: this.plugin.settings.streamPageSize,
 			memoImageMaxWidth: this.plugin.settings.memoImageMaxWidth,
 			exploreColumnLimit: this.plugin.settings.exploreColumnLimit,
 			dayGroupColorA: hexAlphaToRgba(this.plugin.settings.dayGroupColorA, this.plugin.settings.dayGroupAlphaA),
@@ -75,6 +76,7 @@ export class JournalMemosView extends ItemView {
 		return {
 			stream: snapshot.stream,
 			heatmap: snapshot.heatmap,
+			streamPageSize: this.plugin.settings.streamPageSize,
 			memoImageMaxWidth: this.plugin.settings.memoImageMaxWidth,
 			exploreColumnLimit: this.plugin.settings.exploreColumnLimit,
 			dayGroupColorA: hexAlphaToRgba(this.plugin.settings.dayGroupColorA, this.plugin.settings.dayGroupAlphaA),
@@ -85,6 +87,8 @@ export class JournalMemosView extends ItemView {
 			qweatherRefreshInterval: this.plugin.settings.qweatherRefreshInterval,
 			qweatherIconSet: this.plugin.settings.qweatherIconSet,
 			refreshData: () => this.plugin.memoService.getSnapshot(),
+			loadMoreMemos: (offset: number, limit: number) =>
+				this.plugin.memoService.getStreamPage(offset, limit),
 			publishMemo: async (content: string) => {
 				await this.plugin.memoService.appendMemo(content);
 			},

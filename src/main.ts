@@ -13,7 +13,7 @@ const JOURNAL_MEMOS_ICON = `<svg viewBox="0 0 100 100" version="1.1" xmlns="http
 import { registerCommands } from "./commands/register-commands";
 import { parseMemoBlockBody } from "./data/memo-parser";
 import { MemoService } from "./features/memo-service";
-import { DEFAULT_SETTINGS, JournalMemosSettingTab, type JournalMemosSettings } from "./settings";
+import { clampStreamPageSize, DEFAULT_SETTINGS, JournalMemosSettingTab, type JournalMemosSettings } from "./settings";
 import { JOURNAL_MEMOS_VIEW_TYPE, JournalMemosView } from "./ui/journal-memos-view";
 import { InlineMemoImagePreviewModal, type InlineMemoPreviewItem } from "./ui/InlineMemoImagePreviewModal";
 import { fileNameFromPath, looksLikeImageFile } from "./utils/path";
@@ -121,8 +121,15 @@ export default class JournalMemosPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		const persisted = (await this.loadData()) as Partial<JournalMemosSettings> | null;
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, persisted ?? {});
+		const persisted = (await this.loadData()) as
+			| (Partial<JournalMemosSettings> & { streamDays?: number; streamMemoLimit?: number })
+			| null;
+		const merged = Object.assign({}, DEFAULT_SETTINGS, persisted ?? {});
+		const legacyPageSize = persisted?.streamPageSize ?? persisted?.streamMemoLimit ?? persisted?.streamDays;
+		merged.streamPageSize = clampStreamPageSize(legacyPageSize ?? DEFAULT_SETTINGS.streamPageSize);
+		delete (merged as { streamDays?: number }).streamDays;
+		delete (merged as { streamMemoLimit?: number }).streamMemoLimit;
+		this.settings = merged;
 	}
 
 	async saveSettings(): Promise<void> {

@@ -13,7 +13,9 @@
 
 	export let stream = [];
 	export let heatmap = [];
+	export let streamPageSize = 100;
 	export let refreshData;
+	export let loadMoreMemos;
 	export let publishMemo;
 	export let updateMemo;
 	export let deleteMemo;
@@ -54,6 +56,8 @@
 	let isSubmitting = false;
 	let isUploading = false;
 	let isLoading = false;
+	let isLoadingMoreMemos = false;
+	let hasLoadedAllMemos = false;
 	let errorMessage = "";
 	let selectedTag = "all";
 	let searchQuery = "";
@@ -77,10 +81,13 @@
 	let editingMemo = null;
 	let editDraft = "";
 	let isSavingEdit = false;
+	let streamReloadVersion = 0;
 
 	$: tagStats = buildTagStats(stream);
 	$: existingTags = tagStats.map((s) => s.tag);
 	$: totalMemoCount = stream.length;
+	$: memoListResetKey = `${streamReloadVersion}:${selectedTag}:${searchQuery.trim().toLowerCase()}`;
+	$: canLoadOlderForFilter = totalMemoCount > 0 && filteredStream.length === 0 && !hasLoadedAllMemos;
 	$: maxImageWidthCss = `${Math.max(120, Number(memoImageMaxWidth) || 640)}px`;
 	$: previewAttachment =
 		previewIndex >= 0 && previewIndex < previewGallery.length
@@ -324,6 +331,8 @@
 			const snapshot = await refreshData();
 			stream = snapshot.stream;
 			heatmap = snapshot.heatmap;
+			hasLoadedAllMemos = stream.length < streamPageSize;
+			streamReloadVersion += 1;
 		} catch (error) {
 			errorMessage =
 				error instanceof Error
@@ -331,6 +340,39 @@
 					: "Failed to load memos.";
 		} finally {
 			isLoading = false;
+		}
+	}
+
+	async function loadOlderMemos() {
+		if (isLoadingMoreMemos || hasLoadedAllMemos || !loadMoreMemos) {
+			return;
+		}
+
+		isLoadingMoreMemos = true;
+		errorMessage = "";
+		try {
+			const nextMemos = await loadMoreMemos(
+				stream.length,
+				streamPageSize,
+			);
+			if (!Array.isArray(nextMemos) || nextMemos.length === 0) {
+				hasLoadedAllMemos = true;
+				return;
+			}
+
+			const seenIds = new Set(stream.map((memo) => memo.id));
+			const uniqueMemos = nextMemos.filter((memo) => !seenIds.has(memo.id));
+			stream = [...stream, ...uniqueMemos].sort(
+				(left, right) => right.createdAt - left.createdAt,
+			);
+			hasLoadedAllMemos = nextMemos.length < streamPageSize;
+		} catch (error) {
+			errorMessage =
+				error instanceof Error
+					? error.message
+					: "Failed to load older memos.";
+		} finally {
+			isLoadingMoreMemos = false;
 		}
 	}
 
@@ -1141,15 +1183,46 @@
 
 				{#if filteredStream.length === 0}
 					<p class="jm-empty">
-						{#if totalMemoCount === 0}
-							No memos found in the configured date range.
-						{:else if searchQuery.trim()}
-							No memos match the search query.
-						{:else}
+							{#if totalMemoCount === 0}
+								No memos found in daily notes.
+							{:else if canLoadOlderForFilter}
+								No matches in loaded memos yet.
+							{:else if searchQuery.trim()}
+								No memos match the search query.
+							{:else}
 							No memos match the current tag filter.
 						{/if}
 					</p>
+						{#if totalMemoCount === 0}
+							<div class="jm-empty-actions">
+								<button
+								type="button"
+								class="jm-secondary-button"
+								on:click={openPluginSettings}
+								>
+									Adjust page size
+								</button>
+							</div>
+						{:else if canLoadOlderForFilter}
+							<div class="jm-empty-actions">
+								<button
+									type="button"
+									class="jm-secondary-button"
+									on:click={() => void loadOlderMemos()}
+									disabled={isLoadingMoreMemos}
+								>
+									{isLoadingMoreMemos ? "Loading older memos..." : "Load older memos"}
+								</button>
+							</div>
+						{/if}
 				{:else}
+					<div class="jm-stream-summary">
+						{#if filteredStream.length === totalMemoCount}
+							Loaded {totalMemoCount} memos.
+						{:else}
+							Showing {filteredStream.length} of loaded {totalMemoCount} memos.
+						{/if}
+					</div>
 					<MemoList
 						memos={filteredStream}
 						bind:editDraft
@@ -1163,6 +1236,9 @@
 						{dayGroupColorB}
 						{searchQuery}
 						{existingTags}
+						resetKey={memoListResetKey}
+						hasMoreSource={!hasLoadedAllMemos}
+						isLoadingSource={isLoadingMoreMemos}
 						on:edit={(e) => openMemoEditor(e.detail)}
 						on:cancelEdit={closeMemoEditor}
 						on:saveEdit={(e) => saveMemoEdit(e.detail)}
@@ -1179,6 +1255,7 @@
 										: "Failed to delete memo.";
 							}
 						}}
+						on:needMore={() => void loadOlderMemos()}
 					/>
 				{/if}
 			</section>

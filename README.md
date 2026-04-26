@@ -4,7 +4,7 @@
 
 ## ✨ Features
 
-- **📱 Stream View**: A unified timeline of your thoughts from recent days, grouped by date.
+- **📱 Stream View**: A unified timeline of your latest memos, grouped by date.
 - **🧱 Explore View**: A beautiful, responsive masonry (waterfall) grid layout to browse your past memos visually.
   - **Customizable Layout**: Adjust the number of columns in settings or let it adapt automatically.
   - **Rich Media**: Images are neatly organized at the bottom of each card.
@@ -26,7 +26,7 @@
 Go to **Settings > Journal Memos** to customize your experience:
 
 - **Daily Notes Folder**: path to your daily notes (e.g., `DailyNotes`).
-- **Stream Window**: Number of days to show in the main stream (default: 30).
+- **Stream page size**: Number of memos to load per stream page (default: 100).
 - **Heatmap Window**: Range of the activity heatmap (default: 140 days).
 - **Explore View Columns**: specific the count of columns for the Explore view (Set `0` for auto-responsive).
 

@@ -225,11 +225,38 @@ export class MemoService {
 	async getSnapshot(): Promise<MemoSnapshot> {
 		const settings = this.readSettings();
 		const [stream, heatmap] = await Promise.all([
-			this.getStream(settings.streamDays),
+			this.getStreamPage(0, settings.streamPageSize),
 			this.getHeatmap(settings.heatmapDays),
 		]);
 
 		return { stream, heatmap };
+	}
+
+	async getStreamPage(offset: number, limit: number): Promise<MemoItem[]> {
+		const settings = this.readSettings();
+		const safeOffset = Math.max(0, Math.floor(offset));
+		const safeLimit = Math.max(1, Math.floor(limit));
+		const files = this.app.vault
+			.getMarkdownFiles()
+			.filter((file) => isDailyNotePath(file.path, settings.dailyNotesFolder))
+			.sort((left, right) => right.basename.localeCompare(left.basename));
+
+		const stream: MemoItem[] = [];
+		const targetCount = safeOffset + safeLimit;
+		for (const file of files) {
+			const memos = await this.readMemos(file);
+			if (memos.length === 0) {
+				continue;
+			}
+
+			stream.push(...memos);
+			stream.sort((left, right) => right.createdAt - left.createdAt);
+			if (stream.length >= targetCount) {
+				return stream.slice(safeOffset, targetCount);
+			}
+		}
+
+		return stream.slice(safeOffset, targetCount);
 	}
 
 	async openDailyNote(dateKey: string): Promise<void> {
@@ -289,13 +316,6 @@ export class MemoService {
 
 		// Start background loading after a short delay
 		setTimeout(() => void processNextChunk(), 1000);
-	}
-
-	private async getStream(days: number): Promise<MemoItem[]> {
-		const settings = this.readSettings();
-		const files = getRecentDailyFiles(this.app, settings.dailyNotesFolder, days, settings.dailyNotePathFormat);
-		const allMemos = await Promise.all(files.map((file) => this.readMemos(file)));
-		return allMemos.flat().sort((left, right) => right.createdAt - left.createdAt);
 	}
 
 	private async getHeatmap(days: number): Promise<HeatmapCell[]> {

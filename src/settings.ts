@@ -5,7 +5,7 @@ export interface JournalMemosSettings {
 	dailyNotesFolder: string;
 	dailyNotePathFormat: string;
 	attachmentsFolder: string;
-	streamDays: number;
+	streamPageSize: number;
 	heatmapDays: number;
 	memoImageMaxWidth: number;
 	exploreColumnLimit: number;
@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS: JournalMemosSettings = {
 	dailyNotesFolder: "DailyNotes",
 	dailyNotePathFormat: "{folder}/{yyyy}/{MM}/{yyyy-MM-dd}.md",
 	attachmentsFolder: "{folder}/_attachments",
-	streamDays: 30,
+	streamPageSize: 100,
 	heatmapDays: 140,
 	memoImageMaxWidth: 640,
 	exploreColumnLimit: 0,
@@ -45,6 +45,15 @@ function parsePositiveInt(value: string, fallback: number): number {
 		return fallback;
 	}
 	return parsed;
+}
+
+export function clampStreamPageSize(value: number): number {
+	const fallback = DEFAULT_SETTINGS.streamPageSize;
+	const parsed = Math.floor(value);
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		return fallback;
+	}
+	return Math.min(300, Math.max(20, parsed));
 }
 
 export function hexAlphaToRgba(hex: string, alpha: number): string {
@@ -175,16 +184,18 @@ export class JournalMemosSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(container)
-			.setName("Stream window (days)")
-			.setDesc("How many recent days to include in the stream list.")
+			.setName("Stream page size")
+			.setDesc("How many memos to load per stream page when opening or scrolling.")
 			.addText((text) =>
 				text
-					.setPlaceholder("30")
-					.setValue(String(this.plugin.settings.streamDays))
+					.setPlaceholder("100")
+					.setValue(String(this.plugin.settings.streamPageSize))
 					.onChange(async (value) => {
-						this.plugin.settings.streamDays = parsePositiveInt(
-							value,
-							DEFAULT_SETTINGS.streamDays,
+						this.plugin.settings.streamPageSize = clampStreamPageSize(
+							parsePositiveInt(
+								value,
+								DEFAULT_SETTINGS.streamPageSize,
+							),
 						);
 						await this.plugin.saveSettings();
 						await this.plugin.refreshOpenViews();
@@ -393,4 +404,3 @@ export class JournalMemosSettingTab extends PluginSettingTab {
 			);
 	}
 }
-
